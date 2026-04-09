@@ -2,7 +2,7 @@
  * @file frontend/js/pages/landing.js
  */
 
-import { login, state } from "../auth.js";
+import { login, register, loginWithGoogleCredential } from "../auth.js";
 import { navigate } from "../router.js";
 
 export const renderLanding = async (container) => {
@@ -23,11 +23,26 @@ export const renderLanding = async (container) => {
                 
                 <div class="login-box glass p-lg">
                     <h3>Get Started</h3>
-                    <p class="text-muted">Sign in with your corporate Google account to access your dashboard.</p>
-                    <button id="loginBtn" class="btn btn-primary">
-                        <i class="fab fa-google"></i>
-                        Sign in with Google
-                    </button>
+                    <p class="text-muted">Create an account or sign in to access your dashboard.</p>
+                    <div id="googleBtnContainer" class="mb-md"></div>
+                    <div class="text-muted" style="margin: 8px 0;">or use email/password</div>
+                    <div class="form-group">
+                        <input type="email" id="emailInput" placeholder="Email" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="password" id="passwordInput" placeholder="Password (min 8 chars)" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="text" id="nameInput" placeholder="Display name (optional)">
+                    </div>
+                    <div class="flex gap-md" style="display:flex; gap: 10px; margin-top: 10px;">
+                        <button id="loginBtn" class="btn btn-primary" style="flex:1;">
+                            Sign In
+                        </button>
+                        <button id="registerBtn" class="btn btn-outline" style="flex:1;">
+                            Register
+                        </button>
+                    </div>
                     <p class="terms">By signing in, you agree to our Terms of Service.</p>
                 </div>
             </main>
@@ -36,12 +51,63 @@ export const renderLanding = async (container) => {
         </div>
     `;
 
+    const getCredentials = () => ({
+        email: document.getElementById('emailInput').value.trim(),
+        password: document.getElementById('passwordInput').value,
+        displayName: document.getElementById('nameInput').value.trim(),
+    });
+
+    const googleClientId = window.__ENV__?.GOOGLE_OAUTH_CLIENT_ID;
+    if (window.google?.accounts?.id && googleClientId) {
+        window.google.accounts.id.initialize({
+            client_id: googleClientId,
+            callback: async (response) => {
+                try {
+                    await loginWithGoogleCredential(response.credential);
+                    navigate('/dashboard');
+                } catch (err) {
+                    alert(`Google sign-in failed: ${err.message}`);
+                }
+            }
+        });
+
+        window.google.accounts.id.renderButton(
+            document.getElementById('googleBtnContainer'),
+            {
+                theme: 'outline',
+                size: 'large',
+                text: 'signin_with',
+                shape: 'pill',
+                width: 280
+            }
+        );
+    }
+
     document.getElementById('loginBtn').addEventListener('click', async () => {
         try {
-            await login();
+            const creds = getCredentials();
+            if (!creds.email || !creds.password) {
+                alert('Please enter email and password.');
+                return;
+            }
+            await login({ email: creds.email, password: creds.password });
             navigate('/dashboard');
         } catch (err) {
-            alert('Login failed. Please try again.');
+            alert(`Login failed: ${err.message}`);
+        }
+    });
+
+    document.getElementById('registerBtn').addEventListener('click', async () => {
+        try {
+            const creds = getCredentials();
+            if (!creds.email || !creds.password) {
+                alert('Please enter email and password.');
+                return;
+            }
+            await register({ email: creds.email, password: creds.password, displayName: creds.displayName });
+            navigate('/dashboard');
+        } catch (err) {
+            alert(`Registration failed: ${err.message}`);
         }
     });
 };

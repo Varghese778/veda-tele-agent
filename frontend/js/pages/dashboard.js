@@ -25,7 +25,7 @@ export const renderDashboard = async (container) => {
 
     try {
         const profileRes = await api.get('/api/business/profile');
-        profile = await profileRes.json();
+        profile = typeof profileRes?.json === 'function' ? await profileRes.json() : profileRes;
         campaigns = await api.get('/api/campaigns');
         if (campaigns.length > 0) {
             selectedCampaignId = campaigns[0].id;

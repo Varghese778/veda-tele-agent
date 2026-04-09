@@ -4,6 +4,7 @@
 
 import { api } from "../api.js";
 import { navigate } from "../router.js";
+import { state } from "../auth.js";
 
 export const renderOnboarding = async (container) => {
     container.innerHTML = `
@@ -34,6 +35,10 @@ export const renderOnboarding = async (container) => {
                             <label>Primary Contact Phone (E.164)</label>
                             <input type="tel" id="bizPhone" placeholder="+15550000000" required>
                         </div>
+                        <div class="form-group">
+                            <label>Core Value Proposition</label>
+                            <textarea id="valueProp" rows="4" placeholder="Describe your business value proposition in at least 50 characters." required></textarea>
+                        </div>
                         
                         <button type="submit" class="btn btn-primary">
                             Finish Setup
@@ -50,11 +55,17 @@ export const renderOnboarding = async (container) => {
         const data = {
             business_name: document.getElementById('bizName').value,
             industry: document.getElementById('industry').value,
-            phone_number: document.getElementById('bizPhone').value
+            core_value_prop: document.getElementById('valueProp').value,
+            contact_email: state.user?.email || ''
         };
 
         try {
-            await api.patch('/api/business/profile', data);
+            const profileResp = await api.get('/api/business/profile');
+            if (profileResp?.status === 404) {
+                await api.post('/api/business/profile', data);
+            } else {
+                await api.patch('/api/business/profile', data);
+            }
             navigate('/dashboard');
         } catch (err) {
             alert('Failed to save profile: ' + err.message);

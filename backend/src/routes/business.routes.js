@@ -46,5 +46,6 @@ router.post('/profile', validate(createProfileSchema), createProfile);
 // Partial update — at least one field required in the body.
 // Recalculates `profile_complete` based on merged state.
 router.put('/profile', validate(updateProfileSchema), updateProfile);
+router.patch('/profile', validate(updateProfileSchema), updateProfile);
 
 module.exports = router;

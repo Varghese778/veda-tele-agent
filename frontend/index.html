@@ -15,6 +15,7 @@
     
     <!-- Styles -->
     <link rel="stylesheet" href="css/main.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body class="bg-dark text-white font-inter">
     
@@ -26,6 +27,8 @@
     </div>
 
     <!-- Firebase SDK (Modular) will be loaded via script modules -->
+    <!-- Load environment config FIRST (before app.js) -->
+    <script src="env-config.js"></script>
     <script type="module" src="js/app.js"></script>
 </body>
 </html>

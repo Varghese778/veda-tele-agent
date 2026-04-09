@@ -1,10 +1,16 @@
-# Credentials & secrets
+# Credentials & secrets (DO NOT COMMIT)
 application_default_credentials.json
 service-account-key.json
+firebase-key.json
 *.pem
+*.key
 
-# Environment files
+# Environment files (DO NOT COMMIT)
 .env
+.env.local
+.env.*.local
+.env.production.local
+frontend/env-config.js
 
 
 # Dependencies

@@ -12,9 +12,17 @@
 
 const { Router } = require('express');
 const { verifyToken } = require('../middleware/auth.middleware');
-const { initProfile } = require('../controllers/auth.controller');
+const { register, login, googleLogin, getMe, initProfile } = require('../controllers/auth.controller');
 
 const router = Router();
+
+// ── Public auth routes (Firestore + app JWT) ───────────────────────────────
+router.post('/register', register);
+router.post('/login', login);
+router.post('/google', googleLogin);
+
+// ── Protected auth routes ───────────────────────────────────────────────────
+router.get('/me', verifyToken, getMe);
 
 // ── POST /api/auth/init-profile ──────────────────────────────────────────────
 // Protected: requires a valid Firebase ID token.

@@ -26,7 +26,7 @@ const readOnlyGuard = (req, res, next) => {
   if (req.method !== 'GET' && req.path !== '/set-admin') {
     return res.status(403).json({
       error: 'Forbidden',
-      message: 'Admin portal is read-only in MVP. Use Firebase Console for mutations.'
+      message: 'Admin portal is read-only in MVP. Use dedicated admin APIs for mutations.'
     });
   }
   next();

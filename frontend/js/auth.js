@@ -1,94 +1,123 @@
 /**
  * @file frontend/js/auth.js
- * @description MOD-15 — Authentication Service using Firebase Web SDK v10.
- *
- * This module manages the Google Sign-in flow and maintains the ID token
- * strictly in-memory (no persistence to localStorage).
+ * @description Firestore-backed authentication using backend JWT.
  */
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { 
-    getAuth, 
-    signInWithPopup, 
-    GoogleAuthProvider, 
-    onAuthStateChanged, 
-    signOut 
-} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { firebaseConfig } from "./config.js";
+import { API_BASE_URL } from "./config.js";
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const provider = new GoogleAuthProvider();
+const STORAGE_TOKEN_KEY = 'veda_auth_token';
+const STORAGE_USER_KEY = 'veda_auth_user';
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// In-Memory State
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-/**
- * Global application state for current user and token.
- * This is lost on page refresh, enforcing security spec.
- */
 export const state = {
     user: null,
     isAdmin: false,
-    initialized: false
+    initialized: false,
+    authMode: 'backend-jwt'
 };
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Service API
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let accessToken = null;
 
-/**
- * login — Triggers Google Sign-In popup.
- */
-export const login = async () => {
-    try {
-        const result = await signInWithPopup(auth, provider);
-        return result.user;
-    } catch (err) {
-        console.error("[Auth] Login failed:", err.message);
-        throw err;
+const authFetch = async (endpoint, options = {}) => {
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(options.headers || {})
+    };
+
+    if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
     }
-};
 
-/**
- * logout — Clears session and signs out from Firebase.
- */
-export const logout = async () => {
-    try {
-        await signOut(auth);
-        state.user = null;
-        state.isAdmin = false;
-        window.location.hash = "/";
-    } catch (err) {
-        console.error("[Auth] Logout failed:", err.message);
-    }
-};
-
-/**
- * getIdToken — Retrieves a fresh ID token from Firebase.
- * Used on every API request.
- */
-export const getIdToken = async () => {
-    if (!auth.currentUser) return null;
-    return await auth.currentUser.getIdToken(true);
-};
-
-/**
- * initAuth — Sets up the auth state observer and triggers initial routing.
- */
-export const initAuth = (callback) => {
-    onAuthStateChanged(auth, async (user) => {
-        state.user = user;
-        if (user) {
-            // Check for admin claim
-            const tokenResult = await user.getIdTokenResult();
-            state.isAdmin = tokenResult.claims.admin === true;
-        } else {
-            state.isAdmin = false;
-        }
-        state.initialized = true;
-        callback(user);
+    const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+        ...options,
+        headers
     });
+
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        throw new Error(payload.message || `Request failed (${res.status})`);
+    }
+
+    return payload;
+};
+
+const persistSession = (token, user) => {
+    accessToken = token;
+    state.user = user;
+    state.isAdmin = user?.admin === true;
+    sessionStorage.setItem(STORAGE_TOKEN_KEY, token);
+    sessionStorage.setItem(STORAGE_USER_KEY, JSON.stringify(user));
+};
+
+const clearSession = () => {
+    accessToken = null;
+    state.user = null;
+    state.isAdmin = false;
+    sessionStorage.removeItem(STORAGE_TOKEN_KEY);
+    sessionStorage.removeItem(STORAGE_USER_KEY);
+};
+
+export const register = async ({ email, password, displayName }) => {
+    const data = await authFetch('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+            email,
+            password,
+            display_name: displayName || ''
+        })
+    });
+
+    persistSession(data.token, data.user);
+    return data.user;
+};
+
+export const login = async ({ email, password }) => {
+    const data = await authFetch('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+    });
+
+    persistSession(data.token, data.user);
+    return data.user;
+};
+
+export const loginWithGoogleCredential = async (idToken) => {
+    const data = await authFetch('/api/auth/google', {
+        method: 'POST',
+        body: JSON.stringify({ id_token: idToken })
+    });
+
+    persistSession(data.token, data.user);
+    return data.user;
+};
+
+export const logout = async () => {
+    clearSession();
+    window.location.hash = '/';
+};
+
+export const getIdToken = async () => accessToken;
+
+export const initAuth = async (callback) => {
+    try {
+        const storedToken = sessionStorage.getItem(STORAGE_TOKEN_KEY);
+        const storedUser = sessionStorage.getItem(STORAGE_USER_KEY);
+
+        if (!storedToken || !storedUser) {
+            clearSession();
+            state.initialized = true;
+            callback(null);
+            return;
+        }
+
+        accessToken = storedToken;
+        const data = await authFetch('/api/auth/me', { method: 'GET' });
+
+        persistSession(storedToken, data.user);
+        state.initialized = true;
+        callback(state.user);
+    } catch (_err) {
+        clearSession();
+        state.initialized = true;
+        callback(null);
+    }
 };

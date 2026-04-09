@@ -11,7 +11,10 @@
  *                   `verifyToken` in the middleware chain.
  */
 
-const { admin } = require('../config/firebase');
+const jwt = require('jsonwebtoken');
+
+const isAuthDisabled = () => String(process.env.AUTH_DISABLED || '').toLowerCase() === 'true';
+const getJwtSecret = () => process.env.AUTH_JWT_SECRET || 'change-me-in-production';
 
 /**
  * verifyToken — Authenticate incoming requests via Firebase ID Token.
@@ -30,6 +33,16 @@ const { admin } = require('../config/firebase');
  * @returns {Promise<void>}
  */
 const verifyToken = async (req, res, next) => {
+  if (isAuthDisabled()) {
+    // Local/dev Firestore-only mode: bypass Firebase Auth and inject a stable mock user.
+    req.user = {
+      uid: 'local-dev-user',
+      email: 'local-dev@veda.local',
+      admin: true,
+    };
+    return next();
+  }
+
   try {
     // ── 1. Extract bearer token ──────────────────────────────────────────────
     const authHeader = req.headers.authorization;
@@ -50,9 +63,8 @@ const verifyToken = async (req, res, next) => {
       });
     }
 
-    // ── 2. Verify token with Firebase Admin SDK ──────────────────────────────
-    // `verifyIdToken` checks signature, expiry, audience, and issuer.
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    // ── 2. Verify application JWT ─────────────────────────────────────────────
+    const decodedToken = jwt.verify(idToken, getJwtSecret());
 
     // ── 3. Attach normalized user object to request ──────────────────────────
     // `decodedToken.admin` is a custom claim set via `setCustomUserClaims`.
@@ -69,8 +81,7 @@ const verifyToken = async (req, res, next) => {
     // Log only the error code — never the raw token or PII.
     console.error('[AuthMiddleware] Token verification failed:', err.code || err.message);
 
-    // Distinguish expired tokens so the frontend knows to silently refresh.
-    if (err.code === 'auth/id-token-expired') {
+    if (err.name === 'TokenExpiredError') {
       return res.status(401).json({
         error: 'Unauthorized',
         message: 'Token has expired. Please refresh your session.',
@@ -96,6 +107,10 @@ const verifyToken = async (req, res, next) => {
  * @returns {void}
  */
 const isAdmin = (req, res, next) => {
+  if (isAuthDisabled()) {
+    return next();
+  }
+
   if (!req.user || req.user.admin !== true) {
     return res.status(403).json({
       error: 'Forbidden',
