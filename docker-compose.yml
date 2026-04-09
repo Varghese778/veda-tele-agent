@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: veda-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - NODE_ENV=development
+      - GOOGLE_CLOUD_PROJECT=veda-tele-agent
+      - VERTEX_AI_LOCATION=us-central1
+      - GEMINI_MODEL=gemini-live-2.5-flash-native-audio
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_NUMBER=${TWILIO_NUMBER}
+      - GOOGLE_APPLICATION_CREDENTIALS=application_default_credentials.json
+      - BACKEND_URL=http://localhost:8080
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - ./application_default_credentials.json:/app/application_default_credentials.json:ro
+    env_file:
+      - .env
+    networks:
+      - veda-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    image: node:20-alpine
+    container_name: veda-frontend
+    working_dir: /app
+    command: npx http-server -p 3000 -c-1
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+    networks:
+      - veda-network
+    restart: unless-stopped
+
+networks:
+  veda-network:
+    driver: bridge

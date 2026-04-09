@@ -1,0 +1,27 @@
+{
+  "name": "veda-tele-agent-backend",
+  "version": "1.0.0",
+  "description": "Veda-Tele-Agent — AI-Powered Intelligent Tele-Calling SaaS Backend",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "echo \"No tests configured yet\" && exit 0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "alawmulaw": "^6.0.0",
+    "cors": "^2.8.5",
+    "csv-parse": "^6.2.1",
+    "express": "^4.21.0",
+    "firebase-admin": "^12.6.0",
+    "google-auth-library": "^10.6.2",
+    "joi": "^18.1.2",
+    "multer": "^2.1.1",
+    "twilio": "^5.13.1",
+    "ws": "^8.20.0"
+  },
+  "license": "BUSL-1.1"
+}

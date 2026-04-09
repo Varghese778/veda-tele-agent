@@ -1,0 +1,72 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# VEDA-TELE-AGENT GITIGNORE
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Credentials & Secrets (CRITICAL)
+application_default_credentials.json
+service-account-key.json
+firebase-key.json
+*.pem
+*.key
+*.p12
+*.secret
+*.crt
+
+# Environment Files
+.env
+.env.*
+.env.local
+.env.production
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn
+
+# Build & Coverage
+dist/
+build/
+coverage/
+.next/
+.serverless/
+.fusebox/
+
+# OS Files
+.DS_Store
+Thumbs.db
+*.swp
+*.bak
+*~
+
+# IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Docker & CI
+.docker-cache/
+docker-compose.override.yml
+.vercel/
+.vagrant/
+
+# Local Scratch & Logs
+/tmp/
+*.log
+logs/
+.gemini/
+.agents/
+.agent/
+_agents/
+_agent/
+brain/
+knowledge/
+walkthrough.md
+implementation_plan.md
+task.md
+
+# Documentation (Generated specs - optional to ignore)
+# /docs

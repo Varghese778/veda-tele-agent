@@ -1,0 +1,20 @@
+# Credentials & secrets
+application_default_credentials.json
+service-account-key.json
+*.pem
+
+# Environment files
+.env
+
+
+# Dependencies
+node_modules/
+
+# Build & coverage
+dist/
+coverage/
+
+# OS files
+.DS_Store
+Thumbs.db
+
