@@ -227,8 +227,11 @@ export const renderDashboard = async (container) => {
       </div>
 
       <div class="vd-charts">
+        <div class="vd-monitor">
+          <div class="vd-mon-title"><span class="vd-pulse"></span> Live Monitor</div>
+          <div class="vd-log-scroll" id="logScroll"><div class="vd-log-empty">Waiting for agent activity…</div></div>
+        </div>
         <div class="vd-chart-card"><div class="vd-chart-title">Lead Funnel</div><canvas id="funnelC" height="180"></canvas></div>
-        <div class="vd-chart-card"><div class="vd-chart-title">AI Intent</div><canvas id="intentC" height="180"></canvas></div>
       </div>
 
       <div class="vd-bottom">
@@ -243,12 +246,12 @@ export const renderDashboard = async (container) => {
           </table>
         </div>
         <div class="vd-side">
-          <div class="vd-monitor">
-            <div class="vd-mon-title"><span class="vd-pulse"></span> Live Monitor</div>
-            <div class="vd-log-scroll" id="logScroll"><div class="vd-log-empty">Waiting for agent activity…</div></div>
+          <div class="vd-chart-card">
+            <div class="vd-chart-title">AI Intent Breakdown</div>
+            <canvas id="intentC" height="120"></canvas>
           </div>
           <div class="vd-qs">
-            <div class="vd-qs-title"><i class="fas fa-chart-pie" style="color:var(--em);font-size:0.8rem;"></i> Quick Stats</div>
+            <div class="vd-qs-title"><i class="fas fa-chart-bar" style="color:var(--em);font-size:0.8rem;"></i> Quick Stats</div>
             <div class="vd-qs-row"><span>Pending</span><span id="qsPending">0</span></div>
             <div class="vd-qs-row"><span>Calling</span><span id="qsCalling" style="color:#eab308;">0</span></div>
             <div class="vd-qs-row"><span>Completed</span><span id="qsCompleted">0</span></div>
@@ -306,17 +309,19 @@ export const renderDashboard = async (container) => {
   let fC = null, iC = null;
   const initCharts = () => {
     const f = document.getElementById('funnelC'), ic = document.getElementById('intentC');
-    if (!f || !ic || typeof Chart === 'undefined') return;
+    if (!f || typeof Chart === 'undefined') return;
     fC = new Chart(f.getContext('2d'), {
       type: 'bar',
       data: { labels: ['Pending','Email Sent','Widget','Qualified','Calling','Completed','Failed'], datasets: [{ data:[0,0,0,0,0,0,0], backgroundColor:['#475569','#3b82f6','#8b5cf6','#22c55e','#eab308','#22c55e','#ef4444'], borderRadius:4, barThickness:18 }] },
       options: { responsive:true, plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true,ticks:{color:'#475569',stepSize:1},grid:{color:'rgba(255,255,255,0.03)'}}, x:{ticks:{color:'#475569',font:{size:9}},grid:{display:false}} } }
     });
-    iC = new Chart(ic.getContext('2d'), {
-      type: 'doughnut',
-      data: { labels:['Interested','Not Interested','Callback'], datasets:[{data:[0,0,0],backgroundColor:['#22c55e','#ef4444','#eab308'],borderWidth:0}] },
-      options: { responsive:true, cutout:'68%', plugins:{legend:{position:'bottom',labels:{color:'#64748b',font:{size:10},padding:14}}} }
-    });
+    if (ic) {
+      iC = new Chart(ic.getContext('2d'), {
+        type: 'bar',
+        data: { labels:['Interested','Not Interested','Callback'], datasets:[{data:[0,0,0],backgroundColor:['#22c55e','#ef4444','#eab308'],borderRadius:6,barThickness:16}] },
+        options: { indexAxis:'y', responsive:true, plugins:{legend:{display:false}}, scales:{ x:{beginAtZero:true,ticks:{color:'#475569',stepSize:1},grid:{color:'rgba(255,255,255,0.03)'}}, y:{ticks:{color:'#94a3b8',font:{size:11}},grid:{display:false}} } }
+      });
+    }
   };
 
   /* ━━━ Update analytics ━━━ */
