@@ -1,6 +1,7 @@
 /**
  * @file frontend/js/pages/settings.js
- * @description User Settings Page — system prompt, voice, theme, usage tracking.
+ * @description User Settings Page — system prompt, voice, theme, profile.
+ * All settings persist to Firestore user_settings collection.
  */
 
 import { api } from "../api.js";
@@ -10,153 +11,154 @@ import { navigate } from "../router.js";
 export const renderSettings = async (container) => {
     let settings = {};
     let availableVoices = [];
+    let profile = {};
 
+    // Load settings
     try {
         const res = await api.get('/api/settings');
-        settings = res.settings || {};
-        availableVoices = res.available_voices || [];
+        settings = res?.settings || {};
+        availableVoices = res?.available_voices || ['Aoede', 'Charon', 'Fenrir', 'Kore', 'Puck'];
     } catch (err) {
         console.error("[Settings] Failed to load settings:", err.message);
+        // Use fallback defaults
+        availableVoices = ['Aoede', 'Charon', 'Fenrir', 'Kore', 'Puck'];
     }
 
+    // Load profile
+    try {
+        const pr = await api.get('/api/business/profile');
+        if (pr && !pr.status) profile = pr;
+    } catch (_) {}
+
+    // Get Google user data from auth state
+    const user = state.user || {};
+    const displayName = user.display_name || user.displayName || profile.business_name || '';
+    const email = user.email || '';
+    const photoURL = user.photo_url || user.photoURL || '';
+    const initials = displayName ? displayName[0].toUpperCase() : email ? email[0].toUpperCase() : 'U';
+
     container.innerHTML = `
-        <div class="settings-page animate-fade-in" style="min-height:100vh; padding: 24px;">
-            <nav class="navbar glass" style="margin-bottom: 32px;">
-                <div class="container flex justify-between items-center">
-                    <div class="logo font-heading flex items-center gap-md">
-                        <i class="fas fa-microchip text-primary"></i>
-                        <span>VEDA</span>
-                    </div>
-                    <div class="nav-actions flex items-center gap-lg">
-                        <button id="backToDash" class="btn btn-outline btn-sm">
-                            <i class="fas fa-arrow-left"></i> Back to Dashboard
-                        </button>
-                    </div>
+        <div class="vd" style="min-height:100vh;">
+            <nav class="vd-nav">
+                <div class="vd-brand"><i class="fas fa-bolt"></i> VEDA</div>
+                <div class="vd-nav-r">
+                    <button class="vd-nav-btn" id="backBtn"><i class="fas fa-arrow-left"></i> Back</button>
                 </div>
             </nav>
 
-            <div class="container" style="max-width: 720px; margin: 0 auto;">
-                <h1 class="font-heading text-3xl" style="margin-bottom: 8px;">Settings</h1>
-                <p class="text-muted" style="margin-bottom: 32px;">Configure your AI agent, voice preferences, and account settings.</p>
+            <main style="max-width:640px; margin:0 auto; padding:28px 24px;">
+                <h1 style="font-family:'Outfit',sans-serif; font-size:1.5rem; font-weight:600; margin-bottom:4px;">Settings</h1>
+                <p style="color:var(--tx2); font-size:0.85rem; margin-bottom:28px;">Configure your AI agent and account.</p>
+
+                <!-- Profile Card -->
+                <div style="background:var(--s1); border:1px solid var(--bdr); border-radius:14px; padding:20px; margin-bottom:18px; display:flex; align-items:center; gap:16px;">
+                    ${photoURL
+                        ? `<img src="${photoURL}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;" referrerpolicy="no-referrer">`
+                        : `<div style="width:52px;height:52px;border-radius:50%;background:var(--em);display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:700;color:#000;">${initials}</div>`
+                    }
+                    <div>
+                        <div style="font-weight:600;font-size:0.95rem;">${displayName || 'User'}</div>
+                        <div style="color:var(--tx2);font-size:0.8rem;">${email}</div>
+                    </div>
+                </div>
 
                 <!-- System Prompt -->
-                <div class="glass" style="padding: 24px; border-radius: 16px; margin-bottom: 24px;">
-                    <h3 class="font-heading" style="margin-bottom: 12px;">
-                        <i class="fas fa-brain text-primary"></i> Agent System Prompt
-                    </h3>
-                    <p class="text-muted text-sm" style="margin-bottom: 12px;">
-                        Customize how your AI agent behaves. This prompt is merged with campaign context.
+                <div style="background:var(--s1); border:1px solid var(--bdr); border-radius:14px; padding:20px; margin-bottom:18px;">
+                    <div style="font-family:'Outfit',sans-serif; font-weight:600; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
+                        <i class="fas fa-brain" style="color:var(--em);font-size:0.85rem;"></i> Agent System Prompt
+                    </div>
+                    <p style="color:var(--tx2); font-size:0.78rem; margin-bottom:10px;">
+                        This is the base behavior prompt for your AI agent. Campaign-specific details are injected automatically.
                     </p>
-                    <textarea id="systemPromptInput" rows="8" style="width:100%; padding: 14px; border-radius: 12px; background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text); font-family: 'Inter', monospace; font-size: 0.85rem; resize: vertical;">${settings.system_prompt || ''}</textarea>
+                    <textarea id="promptInput" rows="10" style="width:100%; padding:12px; border-radius:10px; background:var(--s2); border:1px solid var(--bdr); color:var(--tx); font-size:0.82rem; font-family:'Inter',monospace; resize:vertical; line-height:1.5;">${(settings.system_prompt || '').replace(/</g, '&lt;')}</textarea>
                 </div>
 
                 <!-- Voice Selection -->
-                <div class="glass" style="padding: 24px; border-radius: 16px; margin-bottom: 24px;">
-                    <h3 class="font-heading" style="margin-bottom: 12px;">
-                        <i class="fas fa-microphone text-primary"></i> Agent Voice
-                    </h3>
-                    <p class="text-muted text-sm" style="margin-bottom: 12px;">
+                <div style="background:var(--s1); border:1px solid var(--bdr); border-radius:14px; padding:20px; margin-bottom:18px;">
+                    <div style="font-family:'Outfit',sans-serif; font-weight:600; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
+                        <i class="fas fa-microphone" style="color:var(--em);font-size:0.85rem;"></i> Agent Voice
+                    </div>
+                    <p style="color:var(--tx2); font-size:0.78rem; margin-bottom:10px;">
                         Select the voice your AI agent uses during calls.
                     </p>
-                    <div class="voice-options flex gap-md" style="flex-wrap: wrap;">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         ${availableVoices.map(v => `
-                            <button class="btn voice-btn ${v === settings.voice ? 'btn-primary' : 'btn-outline'}" data-voice="${v}" style="padding: 10px 20px; border-radius: 12px;">
-                                ${v}
-                            </button>
+                            <button class="voice-btn" data-voice="${v}" style="padding:8px 18px; border-radius:10px; border:1px solid var(--bdr); background:${v === (settings.voice || 'Kore') ? 'var(--em)' : 'var(--s2)'}; color:${v === (settings.voice || 'Kore') ? '#000' : 'var(--tx)'}; font-weight:${v === (settings.voice || 'Kore') ? '700' : '400'}; cursor:pointer; font-size:0.82rem; transition:0.15s;">${v}</button>
                         `).join('')}
                     </div>
                 </div>
 
                 <!-- Usage -->
-                <div class="glass" style="padding: 24px; border-radius: 16px; margin-bottom: 24px;">
-                    <h3 class="font-heading" style="margin-bottom: 12px;">
-                        <i class="fas fa-chart-bar text-primary"></i> Usage
-                    </h3>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span class="text-muted text-sm">Voice Sessions Used</span>
-                        <span class="text-sm font-semibold">${settings.usage_count || 0} / ${settings.usage_limit || 50}</span>
+                <div style="background:var(--s1); border:1px solid var(--bdr); border-radius:14px; padding:20px; margin-bottom:18px;">
+                    <div style="font-family:'Outfit',sans-serif; font-weight:600; margin-bottom:10px; display:flex; align-items:center; gap:8px;">
+                        <i class="fas fa-chart-bar" style="color:var(--em);font-size:0.85rem;"></i> Usage
                     </div>
-                    <div style="width:100%; height: 8px; background: var(--color-surface); border-radius: 4px; overflow: hidden;">
-                        <div style="width: ${Math.min(((settings.usage_count || 0) / (settings.usage_limit || 50)) * 100, 100)}%; height: 100%; background: var(--color-primary); border-radius: 4px; transition: width 0.3s;"></div>
+                    <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                        <span style="color:var(--tx2);font-size:0.82rem;">Voice Sessions</span>
+                        <span style="font-weight:600;font-size:0.82rem;">${settings.usage_count || 0} / ${settings.usage_limit || 50}</span>
                     </div>
-                </div>
-
-                <!-- Theme -->
-                <div class="glass" style="padding: 24px; border-radius: 16px; margin-bottom: 24px;">
-                    <h3 class="font-heading" style="margin-bottom: 12px;">
-                        <i class="fas fa-palette text-primary"></i> Theme
-                    </h3>
-                    <div class="flex gap-md">
-                        <button class="btn theme-btn ${(settings.theme || 'dark') === 'dark' ? 'btn-primary' : 'btn-outline'}" data-theme="dark" style="padding: 10px 24px; border-radius: 12px;">
-                            <i class="fas fa-moon"></i> Dark
-                        </button>
-                        <button class="btn theme-btn ${settings.theme === 'light' ? 'btn-primary' : 'btn-outline'}" data-theme="light" style="padding: 10px 24px; border-radius: 12px;">
-                            <i class="fas fa-sun"></i> Light
-                        </button>
+                    <div style="width:100%;height:6px;background:var(--s2);border-radius:3px;overflow:hidden;">
+                        <div style="width:${Math.min(((settings.usage_count||0)/(settings.usage_limit||50))*100,100)}%;height:100%;background:var(--em);border-radius:3px;transition:0.3s;"></div>
                     </div>
                 </div>
 
-                <!-- Save Button -->
-                <button id="saveSettingsBtn" class="btn btn-primary" style="width: 100%; padding: 16px; border-radius: 12px; font-size: 1rem; font-weight: 600;">
+                <!-- Save -->
+                <button id="saveBtn" style="width:100%;padding:14px;border:none;border-radius:12px;background:var(--em);color:#000;font-weight:700;font-size:0.9rem;cursor:pointer;transition:0.15s;margin-bottom:10px;">
                     <i class="fas fa-save"></i> Save Settings
                 </button>
-
-                <p class="text-muted text-sm" style="text-align:center; margin-top: 16px;">
-                    Signed in as <strong>${state.user?.email || ''}</strong>
-                </p>
-            </div>
+                <div id="saveStatus" style="text-align:center;font-size:0.78rem;color:var(--tx2);min-height:20px;"></div>
+            </main>
         </div>
     `;
 
-    // State tracking
+    // State
     let selectedVoice = settings.voice || 'Kore';
-    let selectedTheme = settings.theme || 'dark';
 
-    // Back button
-    document.getElementById('backToDash').addEventListener('click', () => navigate('/dashboard'));
+    // Events
+    document.getElementById('backBtn').addEventListener('click', () => navigate('/dashboard'));
 
     // Voice selection
     document.querySelectorAll('.voice-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             selectedVoice = btn.dataset.voice;
             document.querySelectorAll('.voice-btn').forEach(b => {
-                b.classList.toggle('btn-primary', b.dataset.voice === selectedVoice);
-                b.classList.toggle('btn-outline', b.dataset.voice !== selectedVoice);
-            });
-        });
-    });
-
-    // Theme selection
-    document.querySelectorAll('.theme-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            selectedTheme = btn.dataset.theme;
-            document.querySelectorAll('.theme-btn').forEach(b => {
-                b.classList.toggle('btn-primary', b.dataset.theme === selectedTheme);
-                b.classList.toggle('btn-outline', b.dataset.theme !== selectedTheme);
+                const isActive = b.dataset.voice === selectedVoice;
+                b.style.background = isActive ? 'var(--em)' : 'var(--s2)';
+                b.style.color = isActive ? '#000' : 'var(--tx)';
+                b.style.fontWeight = isActive ? '700' : '400';
             });
         });
     });
 
     // Save
-    document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
-        const btn = document.getElementById('saveSettingsBtn');
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('saveBtn');
+        const status = document.getElementById('saveStatus');
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        status.textContent = '';
+
         try {
-            await api.put('/api/settings', {
-                system_prompt: document.getElementById('systemPromptInput').value,
+            const payload = {
+                system_prompt: document.getElementById('promptInput').value,
                 voice: selectedVoice,
-                theme: selectedTheme,
-            });
+            };
+            
+            await api.put('/api/settings', payload);
+            
             btn.innerHTML = '<i class="fas fa-check"></i> Saved!';
+            status.style.color = '#22c55e';
+            status.textContent = 'Settings saved successfully. Your AI agent will use these on the next call.';
+
             setTimeout(() => {
                 btn.innerHTML = '<i class="fas fa-save"></i> Save Settings';
                 btn.disabled = false;
-            }, 2000);
+            }, 2500);
         } catch (err) {
-            alert('Failed to save settings: ' + err.message);
             btn.innerHTML = '<i class="fas fa-save"></i> Save Settings';
             btn.disabled = false;
+            status.style.color = '#ef4444';
+            status.textContent = 'Failed to save: ' + err.message;
         }
     });
 };

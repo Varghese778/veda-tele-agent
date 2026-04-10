@@ -563,6 +563,14 @@ const deleteCampaign = async (req, res) => {
     // Delete the campaign document.
     await ref.delete();
 
+    // Clean up activity logs.
+    const actLogsSnap = await db.collection('campaign_activity').doc(req.params.id).collection('logs').get();
+    const actBatch = db.batch();
+    actLogsSnap.docs.forEach(d => actBatch.delete(d.ref));
+    if (!actLogsSnap.empty) await actBatch.commit();
+    // Delete the parent doc too.
+    await db.collection('campaign_activity').doc(req.params.id).delete().catch(() => {});
+
     return res.status(200).json({
       message: 'Campaign and all leads deleted.',
       campaign_id: req.params.id,
@@ -614,6 +622,12 @@ const clearLeads = async (req, res) => {
       called_count: 0,
       updated_at: FieldValue.serverTimestamp(),
     });
+
+    // Clear activity logs.
+    const actLogsSnap = await db.collection('campaign_activity').doc(req.params.id).collection('logs').get();
+    const actBatch = db.batch();
+    actLogsSnap.docs.forEach(d => actBatch.delete(d.ref));
+    if (!actLogsSnap.empty) await actBatch.commit();
 
     return res.status(200).json({
       message: 'All leads cleared.',

@@ -81,11 +81,8 @@ const processOutcome = async (leadId, args, attempt = 1) => {
 
       const leadData = leadSnap.data();
 
-      // 1. Idempotency Guard: If already completed, abort transaction.
-      if (leadData.call_status === 'completed') {
-        console.log(`[ExtractionService] Lead ${leadId} already completed. skipping.`);
-        return;
-      }
+      // 1. Track if this is the first completion (for counter increments)
+      const isFirstCompletion = leadData.call_status !== 'completed';
 
       // 2. Normalize arguments
       const normalized = normalizeArgs(args, leadData.customer_name);
@@ -102,21 +99,25 @@ const processOutcome = async (leadId, args, attempt = 1) => {
         completed_at: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      // b) Increment Campaign counter
-      transaction.update(campaignRef, {
-        called_count: admin.firestore.FieldValue.increment(1),
-        updated_at: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      // c) Update Platform stats
-      const statsUpdate = {
-        total_calls_made: admin.firestore.FieldValue.increment(1),
-        last_updated: admin.firestore.FieldValue.serverTimestamp(),
-      };
-      if (normalized.intent === 'INTERESTED') {
-        statsUpdate.total_leads_qualified = admin.firestore.FieldValue.increment(1);
+      // b) Increment Campaign counter (only on first completion)
+      if (isFirstCompletion) {
+        transaction.update(campaignRef, {
+          called_count: admin.firestore.FieldValue.increment(1),
+          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+        });
       }
-      transaction.update(statsRef, statsUpdate);
+
+      // c) Update Platform stats (only on first completion)
+      if (isFirstCompletion) {
+        const statsUpdate = {
+          total_calls_made: admin.firestore.FieldValue.increment(1),
+          last_updated: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        if (normalized.intent === 'INTERESTED') {
+          statsUpdate.total_leads_qualified = admin.firestore.FieldValue.increment(1);
+        }
+        transaction.update(statsRef, statsUpdate);
+      }
 
       console.log(`[ExtractionService] Outcome persisted for lead=${leadId}, intent=${normalized.intent}`);
 

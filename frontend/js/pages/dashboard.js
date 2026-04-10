@@ -148,6 +148,17 @@ const injectStyles = () => {
 
     .hidden { display:none !important; }
 
+    /* Call History */
+    .vd-history { background:var(--s1); border:1px solid var(--bdr); border-radius:12px; padding:16px; margin-top:14px; }
+    .vd-history-title { font-family:'Outfit',sans-serif; font-size:0.95rem; font-weight:600; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+    .vd-transcript { background:var(--s2); border:1px solid var(--bdr); border-radius:10px; padding:14px; margin-bottom:10px; }
+    .vd-transcript-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    .vd-transcript-name { font-weight:600; font-size:0.85rem; }
+    .vd-transcript-time { font-size:0.7rem; color:var(--tx2); }
+    .vd-transcript-body { font-size:0.78rem; color:var(--tx2); line-height:1.6; white-space:pre-wrap; max-height:200px; overflow-y:auto; }
+    .vd-transcript-intent { display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.62rem; font-weight:600; text-transform:uppercase; }
+    .vd-no-history { text-align:center; padding:20px; color:var(--tx2); font-size:0.82rem; font-style:italic; }
+
     /* Responsive */
     @media(max-width:768px) {
       .vd-stats { grid-template-columns:repeat(2,1fr); }
@@ -261,6 +272,11 @@ export const renderDashboard = async (container) => {
           </div>
         </div>
       </div>
+
+      <div class="vd-history">
+        <div class="vd-history-title"><i class="fas fa-scroll" style="color:var(--em);font-size:0.8rem;"></i> Call History</div>
+        <div id="historyList"><div class="vd-no-history">No completed conversations yet.</div></div>
+      </div>
     `;
   };
 
@@ -362,6 +378,32 @@ export const renderDashboard = async (container) => {
         <td style="color:var(--tx2);">${l.call_duration_sec?l.call_duration_sec+'s':'—'}</td>
       </tr>
     `).join('');
+
+    // Update call history
+    const hist = document.getElementById('historyList');
+    if (!hist) return;
+    const withTranscripts = leads.filter(l => l.transcript);
+    if (withTranscripts.length === 0) {
+      hist.innerHTML = '<div class="vd-no-history">No completed conversations yet.</div>';
+      return;
+    }
+    hist.innerHTML = withTranscripts.map(l => {
+      const intent = l.extracted_data?.intent || 'N/A';
+      const ic = sc(intent === 'INTERESTED' ? 'qualified' : (intent === 'NOT_INTERESTED' ? 'failed' : 'calling'));
+      const time = l.completed_at ? new Date(l.completed_at._seconds ? l.completed_at._seconds * 1000 : l.completed_at).toLocaleString() : '';
+      return `
+        <div class="vd-transcript">
+          <div class="vd-transcript-head">
+            <div>
+              <span class="vd-transcript-name">${l.customer_name || 'Lead'}</span>
+              <span class="vd-transcript-intent" style="background:${ic}22;color:${ic};margin-left:8px;">${intent}</span>
+            </div>
+            <span class="vd-transcript-time">${time}</span>
+          </div>
+          <div class="vd-transcript-body">${(l.transcript || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+        </div>
+      `;
+    }).join('');
   };
 
   /* ━━━ Update live monitor ━━━ */
@@ -465,8 +507,8 @@ export const renderDashboard = async (container) => {
           try { await api.post(`/api/campaigns/${id}/pause`); const c = campaigns.find(x=>(x.campaign_id||x.id)===id); if(c)c.status='paused'; fullRefresh(); } catch(e){alert(e.message);}
         }
         if (action === 'clear') {
-          if (!confirm('Clear all leads? This cannot be undone.')) return;
-          try { await api.delete(`/api/campaigns/${id}/leads`); refreshData(); } catch(e){alert(e.message);}
+          if (!confirm('Clear all leads and history? This cannot be undone.')) return;
+          try { await api.delete(`/api/campaigns/${id}/leads`); refreshData(); updateActivityLog(); } catch(e){alert(e.message);}
         }
         if (action === 'delete') {
           if (!confirm('Delete this campaign and ALL data permanently?')) return;
