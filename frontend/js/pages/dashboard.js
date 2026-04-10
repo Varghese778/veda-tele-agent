@@ -2,6 +2,7 @@
  * @file frontend/js/pages/dashboard.js
  * @description MOD-15 — Main Business Dashboard with full campaign management,
  * real-time analytics, lead tracking, and AI agent status.
+ * Matches the original UI layout with Active tag on left, action buttons on right.
  */
 
 import { api } from "../api.js";
@@ -18,7 +19,13 @@ const ensureJson = async (res) => {
 };
 
 const statusColor = (status) => {
-    const map = { active: '#22c55e', running: '#22c55e', paused: '#f59e0b', draft: '#64748b', completed: '#3b82f6' };
+    const map = {
+        active: '#22c55e', running: '#22c55e', paused: '#f59e0b', draft: '#64748b',
+        completed: '#3b82f6', email_sent: '#3b82f6', widget_started: '#8b5cf6',
+        qualified: '#22c55e', call_booked: '#14b8a6', calling: '#f59e0b',
+        not_interested: '#ef4444', failed: '#ef4444', pending: '#64748b',
+        callback: '#f59e0b'
+    };
     return map[(status || '').toLowerCase()] || '#64748b';
 };
 
@@ -48,110 +55,133 @@ export const renderDashboard = async (container) => {
         console.error("[Dashboard] Initial load failed:", err.message);
     }
 
-    const renderMainContent = () => {
-        if (!selectedCampaignId) {
-            return `
-                <div class="campaigns-grid-view">
-                    <div class="section-header flex justify-between items-center mb-lg">
-                        <div>
-                            <h2 class="font-heading text-2xl">Your Campaigns</h2>
-                            <p class="text-muted text-sm">Select a campaign to view details and analytics.</p>
-                        </div>
-                        <button id="createCampaignBtn" class="btn btn-primary btn-sm" style="padding: 10px 20px; border-radius: 12px;">
-                            <i class="fas fa-plus"></i> New Campaign
-                        </button>
-                    </div>
-                    <div class="campaigns-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;">
-                        ${campaigns.length === 0 ? '<p class="text-muted" style="grid-column: 1/-1; text-align:center; padding: 40px;">No campaigns yet. Create your first one!</p>' : ''}
-                        ${campaigns.map(c => `
-                            <div class="campaign-card glass" style="padding: 20px; border-radius: 16px; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;" data-campaign-id="${c.id || c.campaign_id}">
-                                <div class="flex justify-between items-center mb-md">
-                                    <span class="badge" style="background: ${statusColor(c.status)}; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">${c.status || 'draft'}</span>
-                                    <div class="flex gap-sm">
-                                        <button class="btn btn-outline btn-xs start-btn" data-id="${c.id || c.campaign_id}" title="Start" style="padding: 6px 10px; border-radius: 8px;"><i class="fas fa-play"></i></button>
-                                        <button class="btn btn-outline btn-xs pause-btn" data-id="${c.id || c.campaign_id}" title="Pause" style="padding: 6px 10px; border-radius: 8px;"><i class="fas fa-pause"></i></button>
-                                        <button class="btn btn-outline btn-xs delete-btn" data-id="${c.id || c.campaign_id}" title="Delete" style="padding: 6px 10px; border-radius: 8px; color: #ef4444;"><i class="fas fa-trash"></i></button>
-                                    </div>
-                                </div>
-                                <h3 class="font-heading" style="font-size: 1.1rem; margin-bottom: 6px;">${c.campaign_name || c.name || 'Untitled'}</h3>
-                                <p class="text-muted text-sm">${c.purpose || ""}</p>
-                            </div>
-                        `).join('')}
-                    </div>
+    // ── Campaign List View ─────────────────────────────────
+    const renderCampaignList = () => `
+        <div class="campaigns-grid-view">
+            <div class="section-header flex justify-between items-center mb-lg">
+                <div>
+                    <h2 class="font-heading text-2xl">Your Campaigns</h2>
+                    <p class="text-muted text-sm">Select a campaign to view details and analytics.</p>
                 </div>
-            `;
-        }
+                <button id="createCampaignBtn" class="btn btn-primary btn-sm" style="padding: 10px 20px; border-radius: 12px;">
+                    <i class="fas fa-plus"></i> New Campaign
+                </button>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;">
+                ${campaigns.length === 0 ? '<p class="text-muted" style="grid-column: 1/-1; text-align:center; padding: 40px;">No campaigns yet. Create your first one!</p>' : ''}
+                ${campaigns.map(c => `
+                    <div class="campaign-card glass" style="padding: 20px; border-radius: 16px; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;" data-campaign-id="${c.id || c.campaign_id}">
+                        <div class="flex justify-between items-center mb-md">
+                            <span style="background: ${statusColor(c.status)}; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase;">${c.status || 'draft'}</span>
+                        </div>
+                        <h3 class="font-heading" style="font-size: 1.1rem; margin-bottom: 6px;">${c.campaign_name || c.name || 'Untitled'}</h3>
+                        <p class="text-muted text-sm" style="line-height:1.4;">${c.purpose || ""}</p>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
 
+    // ── Campaign Detail View ───────────────────────────────
+    const renderCampaignDetail = () => {
         const campaign = campaigns.find(c => (c.id || c.campaign_id) === selectedCampaignId) || {};
+        const cStatus = (campaign.status || 'draft').toUpperCase();
         return `
             <div class="campaign-detail-view">
+                <!-- Header: Back + Title -->
                 <div class="flex items-center gap-md mb-lg">
-                    <button id="backToList" class="btn btn-outline btn-sm" style="padding: 8px 14px; border-radius: 10px;">
-                        <i class="fas fa-arrow-left"></i> Back
+                    <button id="backToList" class="btn btn-outline btn-sm" style="padding: 8px 16px; border-radius: 10px; font-size: 0.85rem;">
+                        <i class="fas fa-arrow-left"></i> Campaigns
                     </button>
-                    <div>
-                        <h2 class="font-heading text-2xl">${campaign.campaign_name || campaign.name || 'Campaign'}</h2>
-                        <p class="text-muted text-sm">${campaign.purpose || ""}</p>
-                    </div>
-                    <div id="aiAgentOverlay" class="hidden" style="margin-left:auto; display:flex; align-items:center; padding: 8px 16px; background: rgba(34,197,94,0.15); border:1px solid rgba(34,197,94,0.3); border-radius: 30px;">
-                        <i class="fas fa-robot text-primary"></i>
-                        <span class="font-semibold text-sm" style="margin-left: 8px;">Active</span>
+                    <h2 class="font-heading" style="font-size: 1.4rem;">${campaign.campaign_name || campaign.name || 'Campaign'}</h2>
+                </div>
+
+                <!-- Purpose Box with ACTIVE tag on left, buttons on right -->
+                <div class="glass" style="padding: 16px 20px; border-radius: 14px; margin-bottom: 24px;">
+                    <p class="text-muted text-sm" style="margin-bottom: 12px; line-height: 1.5;">${campaign.purpose || "No description provided."}</p>
+                    <div class="flex items-center" style="gap: 8px; flex-wrap: wrap;">
+                        <span style="background: ${statusColor(campaign.status)}; color: white; padding: 4px 14px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${cStatus}</span>
+                        <div style="flex: 1;"></div>
+                        <button class="btn btn-primary btn-sm action-start" data-id="${selectedCampaignId}" style="padding: 7px 16px; border-radius: 10px; font-size: 0.8rem;">
+                            <i class="fas fa-play"></i> Start
+                        </button>
+                        <button class="btn btn-outline btn-sm action-pause" data-id="${selectedCampaignId}" style="padding: 7px 16px; border-radius: 10px; font-size: 0.8rem;">
+                            <i class="fas fa-pause"></i> Pause
+                        </button>
+                        <button class="btn btn-outline btn-sm action-clear" data-id="${selectedCampaignId}" style="padding: 7px 16px; border-radius: 10px; font-size: 0.8rem; color: #3b82f6; border-color: #3b82f6;">
+                            <i class="fas fa-broom"></i> Clear Leads
+                        </button>
+                        <button class="btn btn-outline btn-sm action-delete" data-id="${selectedCampaignId}" style="padding: 7px 16px; border-radius: 10px; font-size: 0.8rem; color: #ef4444; border-color: #ef4444;">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
                     </div>
                 </div>
 
-                <!-- Stats Cards -->
-                <div class="stats-grid" style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;">
-                    <div class="stat-card glass" style="padding: 20px; border-radius: 14px; text-align: center;">
-                        <span class="text-muted text-sm">Total Calls</span>
-                        <h2 id="statTotalCalls" class="font-heading" style="font-size: 2rem; margin-top: 4px;">0</h2>
+                <!-- 4 Stats Cards: Emails Sent, Widget Sessions, Qualified, Conversion -->
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;">
+                    <div class="glass" style="padding: 20px; border-radius: 14px;">
+                        <div style="display:flex; align-items:center; gap: 8px; margin-bottom: 8px;">
+                            <span style="background: rgba(59,130,246,0.15); padding: 8px; border-radius: 10px;"><i class="fas fa-envelope" style="color: #3b82f6;"></i></span>
+                        </div>
+                        <span class="text-muted text-sm" style="text-transform: uppercase; letter-spacing: 0.5px; font-size: 0.7rem;">Emails Sent</span>
+                        <h2 id="statEmails" class="font-heading" style="font-size: 2rem; margin-top: 4px;">0</h2>
                     </div>
-                    <div class="stat-card glass" style="padding: 20px; border-radius: 14px; text-align: center;">
-                        <span class="text-muted text-sm">Qualified</span>
+                    <div class="glass" style="padding: 20px; border-radius: 14px;">
+                        <div style="display:flex; align-items:center; gap: 8px; margin-bottom: 8px;">
+                            <span style="background: rgba(139,92,246,0.15); padding: 8px; border-radius: 10px;"><i class="fas fa-microphone" style="color: #8b5cf6;"></i></span>
+                        </div>
+                        <span class="text-muted text-sm" style="text-transform: uppercase; letter-spacing: 0.5px; font-size: 0.7rem;">Widget Sessions</span>
+                        <h2 id="statWidgets" class="font-heading" style="font-size: 2rem; margin-top: 4px;">0</h2>
+                    </div>
+                    <div class="glass" style="padding: 20px; border-radius: 14px;">
+                        <div style="display:flex; align-items:center; gap: 8px; margin-bottom: 8px;">
+                            <span style="background: rgba(34,197,94,0.15); padding: 8px; border-radius: 10px;"><i class="fas fa-check-circle" style="color: #22c55e;"></i></span>
+                        </div>
+                        <span class="text-muted text-sm" style="text-transform: uppercase; letter-spacing: 0.5px; font-size: 0.7rem;">Qualified</span>
                         <h2 id="statQualified" class="font-heading" style="font-size: 2rem; margin-top: 4px;">0</h2>
                     </div>
-                    <div class="stat-card glass" style="padding: 20px; border-radius: 14px; text-align: center;">
-                        <span class="text-muted text-sm">Completed</span>
-                        <h2 id="statCompleted" class="font-heading" style="font-size: 2rem; margin-top: 4px;">0</h2>
-                    </div>
-                    <div class="stat-card glass" style="padding: 20px; border-radius: 14px; text-align: center;">
-                        <span class="text-muted text-sm">Conversion</span>
+                    <div class="glass" style="padding: 20px; border-radius: 14px;">
+                        <div style="display:flex; align-items:center; gap: 8px; margin-bottom: 8px;">
+                            <span style="background: rgba(245,158,11,0.15); padding: 8px; border-radius: 10px;"><i class="fas fa-percentage" style="color: #f59e0b;"></i></span>
+                        </div>
+                        <span class="text-muted text-sm" style="text-transform: uppercase; letter-spacing: 0.5px; font-size: 0.7rem;">Conversion</span>
                         <h2 id="statConversion" class="font-heading" style="font-size: 2rem; margin-top: 4px;">0%</h2>
                     </div>
                 </div>
 
-                <!-- Charts + Panels -->
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+                <!-- Charts: Lead Funnel + AI Intent Breakdown -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
                     <div class="glass" style="padding: 20px; border-radius: 14px;">
-                        <h3 class="font-heading mb-md text-sm">Lead Funnel</h3>
+                        <h3 class="font-heading" style="font-size: 0.95rem; margin-bottom: 12px;">Lead Funnel</h3>
                         <canvas id="funnelChart" height="200"></canvas>
                     </div>
                     <div class="glass" style="padding: 20px; border-radius: 14px;">
-                        <h3 class="font-heading mb-md text-sm">AI Intent Breakdown</h3>
+                        <h3 class="font-heading" style="font-size: 0.95rem; margin-bottom: 12px;">AI Intent Breakdown</h3>
                         <canvas id="intentChart" height="200"></canvas>
                     </div>
                 </div>
 
-                <!-- Lead Table + Side Panels -->
-                <div style="display:grid; grid-template-columns: 2fr 1fr; gap: 16px;">
+                <!-- Lead Records + Side Panels (Live Activity + AI Insights) -->
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px;">
+                    <!-- Lead Records -->
                     <div>
-                        <!-- Lead Table -->
-                        <div class="glass" style="padding: 20px; border-radius: 14px; margin-bottom: 16px;">
-                            <div class="flex justify-between items-center mb-md">
-                                <h3 class="font-heading text-sm">Lead Records</h3>
-                                <label class="btn btn-outline btn-xs" style="padding: 6px 14px; border-radius: 10px; cursor: pointer;">
-                                    <i class="fas fa-upload"></i> Import CSV
-                                    <input type="file" id="csvInput" style="display:none" accept=".csv">
-                                </label>
-                            </div>
+                        <div class="flex justify-between items-center mb-md">
+                            <h3 class="font-heading" style="font-size: 1.1rem;">Lead Records</h3>
+                            <label class="btn btn-outline btn-sm" style="padding: 8px 16px; border-radius: 10px; cursor: pointer;">
+                                <i class="fas fa-upload"></i> Import CSV
+                                <input type="file" id="csvInput" style="display:none" accept=".csv">
+                            </label>
+                        </div>
+                        <div class="glass" style="padding: 16px; border-radius: 14px;">
                             <div style="overflow-x: auto;">
-                                <table id="leadTable" style="width:100%;">
+                                <table id="leadTable" style="width:100%; border-collapse: collapse;">
                                     <thead>
                                         <tr>
-                                            <th>Customer</th>
-                                            <th>Phone</th>
-                                            <th>Email</th>
-                                            <th>Status</th>
-                                            <th>Intent</th>
+                                            <th style="text-align:left; padding: 10px 12px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8;">Customer</th>
+                                            <th style="text-align:left; padding: 10px 12px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8;">Email</th>
+                                            <th style="text-align:left; padding: 10px 12px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8;">Status</th>
+                                            <th style="text-align:left; padding: 10px 12px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8;">Intent</th>
+                                            <th style="text-align:left; padding: 10px 12px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8;">Duration</th>
                                         </tr>
                                     </thead>
                                     <tbody id="leadBody">
@@ -163,19 +193,33 @@ export const renderDashboard = async (container) => {
                     </div>
 
                     <!-- Side Panels -->
-                    <div class="flex flex-col gap-md">
+                    <div style="display: flex; flex-direction: column; gap: 16px;">
+                        <!-- Live Activity -->
                         <div class="glass" style="padding: 20px; border-radius: 14px;">
-                            <h3 class="font-heading mb-md text-sm flex items-center gap-sm">
-                                <span class="pulse-dot"></span> Live Activity
+                            <h3 class="font-heading" style="font-size: 0.95rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
+                                <span class="pulse-dot" style="width:10px; height:10px; background:#22c55e; border-radius:50%; display:inline-block;"></span> Live Activity
                             </h3>
-                            <div id="agentLogsArea" style="max-height: 200px; overflow-y: auto; font-size: 0.8rem;">
-                                <p class="text-muted italic">Waiting for activity...</p>
+                            <div id="liveActivityContent" style="display:flex; flex-direction:column; gap: 10px; font-size: 0.85rem;">
+                                <div class="flex justify-between"><span>📧 Emails Sent</span><span id="liveEmails">0</span></div>
+                                <div class="flex justify-between"><span>🎙 Widget Sessions</span><span id="liveWidgets">0</span></div>
+                                <div class="flex justify-between"><span>✅ Qualified</span><span id="liveQualified" style="color:#22c55e; font-weight:600;">0</span></div>
+                                <div class="flex justify-between"><span>📞 Call Booked</span><span id="liveCallBooked" style="color:#f59e0b; font-weight:600;">0</span></div>
+                                <div class="flex justify-between"><span>✔ Completed</span><span id="liveCompleted">0</span></div>
+                                <div class="flex justify-between"><span>✖ Failed</span><span id="liveFailed" style="color:#ef4444; font-weight:600;">0</span></div>
+                                <hr style="border-color: rgba(148,163,184,0.15); margin: 4px 0;">
+                                <div class="flex justify-between"><span>Total Leads</span><span id="liveTotalLeads" style="color:#22c55e; font-weight:600;">0</span></div>
                             </div>
                         </div>
+
+                        <!-- AI Insights -->
                         <div class="glass" style="padding: 20px; border-radius: 14px;">
-                            <h3 class="font-heading mb-md text-sm">AI Insights</h3>
-                            <div id="insightContent" class="text-muted text-sm">
-                                Analytics will appear when leads are processed.
+                            <h3 class="font-heading" style="font-size: 0.95rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
+                                <i class="fas fa-brain" style="color: #22c55e;"></i> AI Insights
+                            </h3>
+                            <div id="insightContent" style="display:flex; flex-direction:column; gap: 10px; font-size: 0.85rem;">
+                                <div class="flex justify-between"><span>● Interested</span><span id="insightInterested">0</span></div>
+                                <div class="flex justify-between"><span>● Callback</span><span id="insightCallback">0</span></div>
+                                <div class="flex justify-between"><span>● Not Interested</span><span id="insightNotInterested">0</span></div>
                             </div>
                         </div>
                     </div>
@@ -184,25 +228,25 @@ export const renderDashboard = async (container) => {
         `;
     };
 
-    // ── Create Campaign Modal HTML ──────────────────────────
+    // ── Create Campaign Modal ──────────────────────────────
     const createCampaignModalHTML = `
         <div id="createCampaignModal" class="modal-overlay hidden" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:1000;">
-            <div class="glass" style="width: 100%; max-width: 500px; padding: 32px; border-radius: 20px;">
+            <div class="glass" style="width:100%; max-width:500px; padding:32px; border-radius:20px;">
                 <div class="flex justify-between items-center mb-lg">
                     <h3 class="font-heading">Create Campaign</h3>
-                    <button id="closeCreateModal" class="btn btn-outline icon-btn" style="padding: 6px 10px;"><i class="fas fa-times"></i></button>
+                    <button id="closeCreateModal" class="btn btn-outline icon-btn" style="padding:6px 10px;"><i class="fas fa-times"></i></button>
                 </div>
                 <p class="text-muted text-sm mb-lg">Set up your outreach campaign details.</p>
-                <form id="createCampaignForm" style="display: flex; flex-direction: column; gap: 16px;">
+                <form id="createCampaignForm" style="display:flex; flex-direction:column; gap:16px;">
                     <div class="form-group">
                         <label>Campaign Name</label>
-                        <input type="text" id="campaignNameInput" placeholder="e.g. Q1 Solar Outreach" required style="padding: 12px; border-radius: 10px;">
+                        <input type="text" id="campaignNameInput" placeholder="e.g. Q1 Solar Outreach" required style="padding:12px; border-radius:10px;">
                     </div>
                     <div class="form-group">
                         <label>Purpose / Goal</label>
-                        <textarea id="campaignPurposeInput" rows="3" placeholder="What is the goal of this campaign?" required style="padding: 12px; border-radius: 10px; resize: vertical;"></textarea>
+                        <textarea id="campaignPurposeInput" rows="3" placeholder="What is the goal of this campaign?" required style="padding:12px; border-radius:10px; resize:vertical;"></textarea>
                     </div>
-                    <button type="submit" class="btn btn-primary" style="padding: 14px; border-radius: 12px; font-weight: 600;">
+                    <button type="submit" class="btn btn-primary" style="padding:14px; border-radius:12px; font-weight:600;">
                         <i class="fas fa-rocket"></i> Create Campaign
                     </button>
                 </form>
@@ -210,30 +254,48 @@ export const renderDashboard = async (container) => {
         </div>
     `;
 
-    // ── User avatar ─────────────────────────────────────────
+    // ── Veda Agent Modal ───────────────────────────────────
+    const agentModalHTML = `
+        <div id="agentModal" class="modal-overlay hidden" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:1000;">
+            <div class="glass" style="width:100%; max-width:560px; padding:28px; border-radius:20px;">
+                <div class="flex justify-between items-center mb-md">
+                    <h3 class="font-heading" style="display:flex; align-items:center; gap:8px;">
+                        <i class="fas fa-robot text-primary"></i> Veda Agent — Live Engine
+                    </h3>
+                    <button id="closeAgentModal" class="btn btn-outline icon-btn" style="padding:6px 10px;"><i class="fas fa-times"></i></button>
+                </div>
+                <div id="agentLogsArea" style="min-height:250px; max-height:350px; overflow-y:auto; background:var(--color-surface); border-radius:12px; padding:14px; font-size:0.8rem; font-family:monospace;">
+                    <p class="text-muted italic">Connecting to orchestrator...</p>
+                </div>
+                <p class="text-muted text-sm" style="margin-top:12px;">Note: If calls aren't dialing, ensure TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are set in your environment configuration.</p>
+            </div>
+        </div>
+    `;
+
+    // ── User avatar for nav ────────────────────────────────
     const userPhotoUrl = state.user?.photo_url || state.user?.photoURL || '';
     const avatarHTML = userPhotoUrl
         ? `<img src="${userPhotoUrl}" alt="Profile" style="width:32px; height:32px; border-radius:50%; border: 2px solid var(--color-primary);" referrerpolicy="no-referrer">`
         : `<div style="width:32px; height:32px; border-radius:50%; background: var(--color-primary); display:flex; align-items:center; justify-content:center; color:white; font-weight:700; font-size:0.8rem;">${(state.user?.email || 'U')[0].toUpperCase()}</div>`;
 
-    // ── Mount View ──────────────────────────────────────────
+    // ── Mount View ─────────────────────────────────────────
+    const renderMainContent = () => selectedCampaignId ? renderCampaignDetail() : renderCampaignList();
+
     container.innerHTML = `
         <div class="dashboard-page animate-fade-in">
             <nav class="navbar glass">
                 <div class="container flex justify-between items-center">
                     <div class="logo font-heading flex items-center gap-md">
-                        <i class="fas fa-microchip text-primary"></i>
+                        <i class="fas fa-bolt text-primary"></i>
                         <span>VEDA</span>
                     </div>
                     <div class="nav-actions flex items-center gap-md">
-                        <span class="text-muted text-sm" style="display:none;">${state.user?.email || ''}</span>
+                        <span class="text-muted text-sm">${state.user?.email || ''}</span>
                         ${avatarHTML}
                         <button id="settingsBtn" class="btn btn-outline icon-btn" title="Settings" style="padding: 8px 10px; border-radius: 10px;">
                             <i class="fas fa-cog"></i>
                         </button>
-                        <button id="logoutBtn" class="btn btn-outline btn-sm" style="padding: 8px 14px; border-radius: 10px;">
-                            Sign Out
-                        </button>
+                        <button id="logoutBtn" class="btn btn-outline btn-sm" style="padding: 8px 16px; border-radius: 10px;">Sign Out</button>
                     </div>
                 </div>
             </nav>
@@ -243,20 +305,18 @@ export const renderDashboard = async (container) => {
                     <h1 class="text-3xl font-heading">Welcome back, ${profile.business_name || "Business Owner"}</h1>
                     <p class="text-muted">Manage your campaigns and track lead performance.</p>
                 </header>
-                <div id="mainContent">
-                    ${renderMainContent()}
-                </div>
+                <div id="mainContent">${renderMainContent()}</div>
             </main>
+
+            <!-- Floating AI Agent Button -->
+            <button id="floatingAiBtn" class="floating-ai-btn glass animate-pulse" title="AI Agent Status" style="position:fixed; bottom:24px; right:24px; width:auto; padding:10px 20px; border-radius:30px; display:flex; align-items:center; gap:8px; z-index:999; cursor:pointer; border:1px solid rgba(34,197,94,0.3); background:rgba(34,197,94,0.1);">
+                <i class="fas fa-robot" style="color:#22c55e;"></i>
+                <span style="font-size:0.8rem; font-weight:600; color:#22c55e;">Active</span>
+            </button>
         </div>
         ${createCampaignModalHTML}
+        ${agentModalHTML}
     `;
-
-    // ── Helper: Get Selected Campaign ──────────────────────
-    const getSelectedCampaign = () => campaigns.find(c => (c.id || c.campaign_id) === selectedCampaignId);
-
-    // ── Attach Navigation Events ───────────────────────────
-    document.getElementById('logoutBtn').addEventListener('click', logout);
-    document.getElementById('settingsBtn').addEventListener('click', () => navigate('/settings'));
 
     // ── Chart instances ────────────────────────────────────
     let funnelChartInstance = null;
@@ -265,27 +325,25 @@ export const renderDashboard = async (container) => {
     const initCharts = () => {
         const funnelCanvas = document.getElementById('funnelChart');
         const intentCanvas = document.getElementById('intentChart');
-        if (!funnelCanvas || !intentCanvas) return;
-
-        if (typeof Chart === 'undefined') return;
+        if (!funnelCanvas || !intentCanvas || typeof Chart === 'undefined') return;
 
         funnelChartInstance = new Chart(funnelCanvas.getContext('2d'), {
             type: 'bar',
             data: {
-                labels: ['Pending', 'Email Sent', 'Widget Opened', 'Calling', 'Completed', 'Failed'],
+                labels: ['Pending', 'Email Sent', 'Widget', 'Qualified', 'Call Booked', 'Calling', 'Completed', 'Failed'],
                 datasets: [{
                     label: 'Leads',
-                    data: [0, 0, 0, 0, 0, 0],
-                    backgroundColor: ['#64748b', '#3b82f6', '#8b5cf6', '#f59e0b', '#22c55e', '#ef4444'],
-                    borderRadius: 6,
+                    data: [0, 0, 0, 0, 0, 0, 0, 0],
+                    backgroundColor: ['#64748b', '#3b82f6', '#8b5cf6', '#22c55e', '#14b8a6', '#f59e0b', '#22c55e', '#ef4444'],
+                    borderRadius: 4,
                 }]
             },
             options: {
                 responsive: true,
                 plugins: { legend: { display: false } },
                 scales: {
-                    y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.1)' } },
-                    x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { display: false } }
+                    y: { beginAtZero: true, ticks: { color: '#94a3b8', stepSize: 1 }, grid: { color: 'rgba(148,163,184,0.08)' } },
+                    x: { ticks: { color: '#94a3b8', font: { size: 9 } }, grid: { display: false } }
                 }
             }
         });
@@ -302,9 +360,7 @@ export const renderDashboard = async (container) => {
             },
             options: {
                 responsive: true,
-                plugins: {
-                    legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 } } }
-                }
+                plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 }, padding: 16 } } }
             }
         });
     };
@@ -312,38 +368,43 @@ export const renderDashboard = async (container) => {
     // ── Update Stats ───────────────────────────────────────
     const updateStats = (analytics) => {
         const el = (id) => document.getElementById(id);
-        if (el('statTotalCalls')) el('statTotalCalls').innerText = analytics.total_calls || analytics.total_leads || 0;
-        if (el('statQualified')) el('statQualified').innerText = analytics.qualified_leads || 0;
-        if (el('statCompleted')) el('statCompleted').innerText = analytics.completed_calls || 0;
+        const sb = analytics.status_breakdown || analytics.call_status_breakdown || {};
+        const ib = analytics.intent_breakdown || {};
+
+        // Stat cards
+        if (el('statEmails')) el('statEmails').innerText = sb.email_sent || 0;
+        if (el('statWidgets')) el('statWidgets').innerText = sb.widget_started || 0;
+        if (el('statQualified')) el('statQualified').innerText = analytics.qualified_leads || (sb.qualified || 0);
         if (el('statConversion')) el('statConversion').innerText = `${analytics.conversion_rate || 0}%`;
 
-        const sb = analytics.status_breakdown || analytics.call_status_breakdown || {};
+        // Live Activity panel
+        if (el('liveEmails')) el('liveEmails').innerText = sb.email_sent || 0;
+        if (el('liveWidgets')) el('liveWidgets').innerText = sb.widget_started || 0;
+        if (el('liveQualified')) el('liveQualified').innerText = sb.qualified || 0;
+        if (el('liveCallBooked')) el('liveCallBooked').innerText = sb.call_booked || sb.calling || 0;
+        if (el('liveCompleted')) el('liveCompleted').innerText = sb.completed || 0;
+        if (el('liveFailed')) el('liveFailed').innerText = sb.failed || 0;
+        if (el('liveTotalLeads')) el('liveTotalLeads').innerText = analytics.total_calls || analytics.total_leads || 0;
+
+        // AI Insights panel
+        if (el('insightInterested')) el('insightInterested').innerText = ib.INTERESTED || 0;
+        if (el('insightCallback')) el('insightCallback').innerText = ib.CALLBACK || 0;
+        if (el('insightNotInterested')) el('insightNotInterested').innerText = ib.NOT_INTERESTED || 0;
+
+        // Funnel chart
         if (funnelChartInstance) {
             funnelChartInstance.data.datasets[0].data = [
                 sb.pending || 0, sb.email_sent || 0, sb.widget_started || 0,
-                sb.calling || 0, sb.completed || 0, sb.failed || 0
+                sb.qualified || 0, sb.call_booked || 0, sb.calling || 0,
+                sb.completed || 0, sb.failed || 0
             ];
             funnelChartInstance.update('none');
         }
 
-        const ib = analytics.intent_breakdown || {};
+        // Intent chart
         if (intentChartInstance) {
             intentChartInstance.data.datasets[0].data = [ib.INTERESTED || 0, ib.NOT_INTERESTED || 0, ib.CALLBACK || 0];
             intentChartInstance.update('none');
-        }
-
-        const insightEl = document.getElementById('insightContent');
-        if (insightEl && (ib.INTERESTED || ib.NOT_INTERESTED || ib.CALLBACK)) {
-            const total = (ib.INTERESTED || 0) + (ib.NOT_INTERESTED || 0) + (ib.CALLBACK || 0);
-            insightEl.innerHTML = `
-                <div style="display:flex; flex-direction:column; gap: 8px;">
-                    <div class="flex justify-between"><span>Interested</span><span class="font-semibold" style="color:#22c55e;">${ib.INTERESTED || 0}</span></div>
-                    <div class="flex justify-between"><span>Not Interested</span><span class="font-semibold" style="color:#ef4444;">${ib.NOT_INTERESTED || 0}</span></div>
-                    <div class="flex justify-between"><span>Callback</span><span class="font-semibold" style="color:#f59e0b;">${ib.CALLBACK || 0}</span></div>
-                    <hr style="border-color: var(--color-border); margin: 4px 0;">
-                    <div class="flex justify-between"><span>Total Analyzed</span><span class="font-semibold">${total}</span></div>
-                </div>
-            `;
         }
     };
 
@@ -352,57 +413,36 @@ export const renderDashboard = async (container) => {
         const tbody = document.getElementById('leadBody');
         if (!tbody) return;
         if (!leads || leads.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-muted" style="text-align:center; padding:20px;">No leads yet. Import a CSV to get started.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="text-muted" style="text-align:center; padding:24px;">No leads yet. Import a CSV to get started.</td></tr>';
             return;
         }
         tbody.innerHTML = leads.map(l => `
-            <tr>
-                <td>${l.customer_name || '--'}</td>
-                <td>${l.phone_number || '--'}</td>
-                <td>${l.email || '--'}</td>
-                <td><span class="badge" style="background: ${statusColor(l.call_status)}; color:white; padding: 3px 10px; border-radius: 12px; font-size: 0.7rem;">${l.call_status || 'pending'}</span></td>
-                <td>${l.extracted_data?.intent || '--'}</td>
+            <tr style="border-bottom: 1px solid rgba(148,163,184,0.08);">
+                <td style="padding: 12px;">
+                    <div style="font-weight:500;">${l.customer_name || '--'}</div>
+                    <div class="text-muted" style="font-size:0.75rem;">${l.phone_number || ''}</div>
+                </td>
+                <td style="padding: 12px; font-size:0.85rem;">${l.email || '--'}</td>
+                <td style="padding: 12px;">
+                    <span style="background: ${statusColor(l.call_status)}; color:white; padding: 3px 10px; border-radius: 10px; font-size: 0.7rem; font-weight:600; text-transform: uppercase;">${(l.call_status || 'pending').replace(/_/g, ' ')}</span>
+                </td>
+                <td style="padding: 12px; font-weight:500;">${l.extracted_data?.intent || '—'}</td>
+                <td style="padding: 12px; color: #94a3b8;">${l.call_duration_sec ? l.call_duration_sec + 's' : '—'}</td>
             </tr>
         `).join('');
     };
 
-    // ── Agent Log Helper ───────────────────────────────────
-    const logToAgentModal = (message) => {
-        const agentLogsArea = document.getElementById('agentLogsArea');
-        if (!agentLogsArea) return;
-        const time = new Date().toLocaleTimeString();
-        const logLine = document.createElement('div');
-        logLine.className = "mb-1";
-        logLine.innerHTML = `<span class="text-muted">[${time}]</span> ${message}`;
-        agentLogsArea.appendChild(logLine);
-        agentLogsArea.scrollTop = agentLogsArea.scrollHeight;
-    };
-
-    // ── Refresh Campaign Data ──────────────────────────────
+    // ── Refresh Data ───────────────────────────────────────
     const refreshSelectedCampaignData = async () => {
         if (!selectedCampaignId) return;
-
-        const campaign = getSelectedCampaign();
-        const aiOverlay = document.getElementById("aiAgentOverlay");
-        if (aiOverlay && campaign) {
-            const status = (campaign.status || "").toUpperCase();
-            if (status === "RUNNING" || status === "ACTIVE") {
-                aiOverlay.classList.remove("hidden");
-            } else {
-                aiOverlay.classList.add("hidden");
-            }
-        }
-
         try {
             const [analyticsRes, leadsRes] = await Promise.all([
                 api.get(`/api/campaigns/${selectedCampaignId}/analytics`),
                 api.get(`/api/campaigns/${selectedCampaignId}/leads`),
             ]);
-
             const analytics = await ensureJson(analyticsRes);
             const leadsPayload = await ensureJson(leadsRes);
             updateStats(analytics);
-
             const currentLeads = leadsPayload?.leads || leadsPayload || [];
             updateLeadTable(Array.isArray(currentLeads) ? currentLeads : []);
         } catch (err) {
@@ -410,22 +450,22 @@ export const renderDashboard = async (container) => {
         }
     };
 
-    // ── Attach Dynamic Events ──────────────────────────────
+    // ── Attach Events ──────────────────────────────────────
     const attachDynamicEvents = () => {
-        // Campaign card clicks
+        // Campaign card clicks → open detail
         document.querySelectorAll('.campaign-card').forEach(card => {
-            card.addEventListener('click', (e) => {
-                if (e.target.closest('.start-btn') || e.target.closest('.pause-btn') || e.target.closest('.delete-btn')) return;
+            card.addEventListener('click', () => {
                 selectedCampaignId = card.dataset.campaignId;
                 document.getElementById('mainContent').innerHTML = renderMainContent();
                 attachDynamicEvents();
                 initCharts();
                 refreshSelectedCampaignData();
+                if (pollTimer) clearInterval(pollTimer);
                 pollTimer = setInterval(refreshSelectedCampaignData, 5000);
             });
         });
 
-        // Back button
+        // Back to list
         const backBtn = document.getElementById('backToList');
         if (backBtn) {
             backBtn.addEventListener('click', () => {
@@ -436,23 +476,13 @@ export const renderDashboard = async (container) => {
             });
         }
 
-        // Create campaign button
+        // Create campaign
         const createBtn = document.getElementById('createCampaignBtn');
-        if (createBtn) {
-            createBtn.addEventListener('click', () => {
-                document.getElementById('createCampaignModal').classList.remove('hidden');
-            });
-        }
+        if (createBtn) createBtn.addEventListener('click', () => document.getElementById('createCampaignModal').classList.remove('hidden'));
 
-        // Close create modal
         const closeCreateModal = document.getElementById('closeCreateModal');
-        if (closeCreateModal) {
-            closeCreateModal.addEventListener('click', () => {
-                document.getElementById('createCampaignModal').classList.add('hidden');
-            });
-        }
+        if (closeCreateModal) closeCreateModal.addEventListener('click', () => document.getElementById('createCampaignModal').classList.add('hidden'));
 
-        // Create campaign form
         const createForm = document.getElementById('createCampaignForm');
         if (createForm) {
             createForm.addEventListener('submit', async (e) => {
@@ -460,54 +490,61 @@ export const renderDashboard = async (container) => {
                 const name = document.getElementById('campaignNameInput').value.trim();
                 const purpose = document.getElementById('campaignPurposeInput').value.trim();
                 if (!name || !purpose) return alert('Please fill all fields.');
-
                 try {
                     const res = await api.post('/api/campaigns', { campaign_name: name, purpose });
-                    const newCampaign = await ensureJson(res);
-                    campaigns.push(newCampaign.campaign || newCampaign);
+                    const nc = await ensureJson(res);
+                    campaigns.push(nc.campaign || nc);
                     document.getElementById('createCampaignModal').classList.add('hidden');
                     document.getElementById('mainContent').innerHTML = renderMainContent();
                     attachDynamicEvents();
-                } catch (err) {
-                    alert('Failed to create campaign: ' + err.message);
-                }
+                } catch (err) { alert('Failed to create campaign: ' + err.message); }
             });
         }
 
-        // Start/Pause/Delete buttons
-        document.querySelectorAll('.start-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
+        // Action buttons: Start, Pause, Clear Leads, Delete
+        document.querySelectorAll('.action-start').forEach(btn => {
+            btn.addEventListener('click', async () => {
                 try {
                     await api.post(`/api/campaigns/${btn.dataset.id}/start`);
                     const c = campaigns.find(c => (c.id || c.campaign_id) === btn.dataset.id);
                     if (c) c.status = 'active';
                     document.getElementById('mainContent').innerHTML = renderMainContent();
-                    attachDynamicEvents();
+                    attachDynamicEvents(); initCharts(); refreshSelectedCampaignData();
+                    if (!pollTimer) pollTimer = setInterval(refreshSelectedCampaignData, 5000);
                 } catch (err) { alert('Failed to start: ' + err.message); }
             });
         });
 
-        document.querySelectorAll('.pause-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
+        document.querySelectorAll('.action-pause').forEach(btn => {
+            btn.addEventListener('click', async () => {
                 try {
                     await api.post(`/api/campaigns/${btn.dataset.id}/pause`);
                     const c = campaigns.find(c => (c.id || c.campaign_id) === btn.dataset.id);
                     if (c) c.status = 'paused';
                     document.getElementById('mainContent').innerHTML = renderMainContent();
-                    attachDynamicEvents();
+                    attachDynamicEvents(); initCharts(); refreshSelectedCampaignData();
                 } catch (err) { alert('Failed to pause: ' + err.message); }
             });
         });
 
-        document.querySelectorAll('.delete-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
+        document.querySelectorAll('.action-clear').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                if (!confirm('Clear all leads for this campaign?')) return;
+                try {
+                    await api.delete(`/api/campaigns/${btn.dataset.id}/leads`);
+                    refreshSelectedCampaignData();
+                } catch (err) { alert('Failed to clear leads: ' + err.message); }
+            });
+        });
+
+        document.querySelectorAll('.action-delete').forEach(btn => {
+            btn.addEventListener('click', async () => {
                 if (!confirm('Delete this campaign and all its leads?')) return;
                 try {
                     await api.delete(`/api/campaigns/${btn.dataset.id}`);
                     campaigns = campaigns.filter(c => (c.id || c.campaign_id) !== btn.dataset.id);
+                    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                    selectedCampaignId = null;
                     document.getElementById('mainContent').innerHTML = renderMainContent();
                     attachDynamicEvents();
                 } catch (err) { alert('Failed to delete: ' + err.message); }
@@ -521,21 +558,23 @@ export const renderDashboard = async (container) => {
                 if (!selectedCampaignId) return alert('Please select a campaign first.');
                 const file = e.target.files[0];
                 if (!file) return;
-
                 const formData = new FormData();
                 formData.append('file', file);
-
                 try {
                     const result = await api.upload(`/api/campaigns/${selectedCampaignId}/upload`, formData);
                     const data = await ensureJson(result);
                     alert(`Upload complete: ${data.accepted || 0} accepted, ${data.rejected || 0} rejected.`);
                     refreshSelectedCampaignData();
-                } catch (err) {
-                    alert('Upload failed: ' + err.message);
-                }
+                } catch (err) { alert('Upload failed: ' + err.message); }
             });
         }
     };
+
+    // ── Global Events ──────────────────────────────────────
+    document.getElementById('logoutBtn').addEventListener('click', logout);
+    document.getElementById('settingsBtn').addEventListener('click', () => navigate('/settings'));
+    document.getElementById('floatingAiBtn').addEventListener('click', () => document.getElementById('agentModal').classList.remove('hidden'));
+    document.getElementById('closeAgentModal').addEventListener('click', () => document.getElementById('agentModal').classList.add('hidden'));
 
     // ── Initialize ─────────────────────────────────────────
     attachDynamicEvents();
