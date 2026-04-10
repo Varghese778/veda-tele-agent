@@ -22,6 +22,7 @@ const { mulawToPcm16, pcm16ToMulaw } = require('../utils/audio.converter');
 const { buildPrompt } = require('./prompt.builder');
 const { processOutcome } = require('./extraction.service');
 const { saveTranscript } = require('./transcript.service');
+const { logActivity } = require('../utils/activity.logger');
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Constants & Configuration
@@ -112,6 +113,9 @@ const handleTwilioConnection = async (twilioWs, request) => {
 
   console.log(`[Bridge] Connected: lead=${leadId}`);
 
+  // Log to activity feed (need campaign_id from Firestore).
+  let campaignIdForLog = null;
+
   // Create isolated session state.
   const session = {
     leadId,
@@ -132,6 +136,10 @@ const handleTwilioConnection = async (twilioWs, request) => {
     const promptData = await buildPrompt(leadId);
     systemPrompt = promptData.systemPrompt;
     userVoice = promptData.voice || 'Kore';
+    campaignIdForLog = promptData.campaignId || null;
+    if (campaignIdForLog) {
+      logActivity(campaignIdForLog, `🎵 Voice widget connected — ${promptData.customerName || 'Lead'}`, 'call');
+    }
   } catch (err) {
     console.error(`[Bridge] Failed to build prompt for lead=${leadId}:`, err.message);
     twilioWs.close();
@@ -257,6 +265,12 @@ const connectToGemini = async (session, twilioWs, systemPrompt, userVoice = 'Kor
               processOutcome(session.leadId, call.args || {}).catch(err => {
                 console.error('[Bridge] processOutcome failure:', err.message);
               });
+              
+              // Log intent to activity feed.
+              const intent = call.args?.intent || 'UNKNOWN';
+              if (campaignIdForLog) {
+                logActivity(campaignIdForLog, `🧠 AI classified: ${intent} — ${(call.args?.summary || '').substring(0, 80)}`, 'ai');
+              }
 
               // Send response back to Gemini to confirm tool execution.
               geminiWs.send(JSON.stringify({

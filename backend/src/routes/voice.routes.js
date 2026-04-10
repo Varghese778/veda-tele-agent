@@ -1,38 +1,55 @@
-/**
- * @file backend/src/routes/voice.routes.js
- * @description Routes for the browser-based voice widget flow.
- *
- * When a lead clicks the email link, they hit the frontend call.html page
- * which connects via WebSocket to /media-stream/:lead_id (handled by bridge.service).
- * This route provides a REST endpoint for the widget to fetch lead + campaign context.
- */
-
 const { Router } = require('express');
+const jwt = require('jsonwebtoken');
 const { db } = require('../config/firebase');
 
 const router = Router();
+const JWT_SECRET = process.env.AUTH_JWT_SECRET || 'dev-secret';
 
 /**
- * GET /api/voice/context/:leadId
+ * GET /api/voice/session/:leadId
  * Returns the lead's campaign context for the voice widget UI.
- * No auth required — the lead is clicking from an email link.
+ * Validates the session token from the query parameter 't'.
  */
-router.get('/context/:leadId', async (req, res) => {
+router.get('/session/:leadId', async (req, res) => {
   try {
     const { leadId } = req.params;
-    const leadSnap = await db.collection('leads').doc(leadId).get();
+    const { t: token } = req.query;
 
+    if (!token) {
+      return res.status(401).json({ error: 'Missing session token' });
+    }
+
+    // 1. Verify Token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ error: 'Session expired or invalid' });
+    }
+
+    if (decoded.leadId !== leadId) {
+      return res.status(401).json({ error: 'Token mismatch' });
+    }
+
+    // 2. Fetch Context
+    const leadSnap = await db.collection('leads').doc(leadId).get();
     if (!leadSnap.exists) {
-      return res.status(404).json({ error: 'Lead not found' });
+      return res.status(404).json({ error: 'Session not found' });
     }
 
     const lead = leadSnap.data();
+    
+    // Check if session is already completed
+    if (lead.call_status === 'completed' || lead.call_status === 'not_interested' || lead.call_status === 'callback') {
+      return res.status(410).json({ error: 'Session already completed' });
+    }
+
     const campaignSnap = await db.collection('campaigns').doc(lead.campaign_id).get();
     const campaign = campaignSnap.exists ? campaignSnap.data() : {};
     const businessSnap = await db.collection('businesses').doc(lead.business_id).get();
     const business = businessSnap.exists ? businessSnap.data() : {};
 
-    // Update lead status to widget_started
+    // 3. Update status
     await db.collection('leads').doc(leadId).update({
       call_status: 'widget_started',
       widget_opened_at: new Date().toISOString(),
@@ -40,20 +57,20 @@ router.get('/context/:leadId', async (req, res) => {
 
     return res.status(200).json({
       lead_id: leadId,
-      customer_name: lead.customer_name || 'Customer',
-      business_name: business.business_name || 'Our Company',
-      campaign_name: campaign.campaign_name || 'Outreach',
+      customerName: lead.customer_name || 'Customer',
+      businessName: business.business_name || 'Our Company',
+      campaignName: campaign.campaign_name || 'Outreach',
       purpose: campaign.purpose || '',
     });
   } catch (err) {
-    console.error('[VoiceRoutes] context error:', err.message);
+    console.error('[VoiceRoutes] session error:', err.message);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
 /**
  * POST /api/voice/status/:leadId
- * Updates lead status from the voice widget (e.g., call_started, call_ended).
+ * Updates lead status from the voice widget.
  */
 router.post('/status/:leadId', async (req, res) => {
   try {
@@ -78,3 +95,4 @@ router.post('/status/:leadId', async (req, res) => {
 });
 
 module.exports = router;
+

@@ -28,6 +28,7 @@
 const { admin, db } = require('../config/firebase');
 const { twilioClient, TWILIO_NUMBER } = require('../config/twilio');
 const { sendCallEmail } = require('./email.service');
+const { logActivity } = require('../utils/activity.logger');
 
 const FieldValue = admin.firestore.FieldValue;
 
@@ -149,12 +150,14 @@ const sendEmailToLead = async (lead, campaign) => {
         updated_at: FieldValue.serverTimestamp(),
       });
       console.log(`[Orchestrator] Email sent to lead=${lead.id}`);
+      logActivity(lead.campaign_id, `📧 Email sent to ${lead.email}`, 'email');
     } else {
       // No email possible — mark as email_bounced.
       await db.collection('leads').doc(lead.id).update({
         call_status: 'email_bounced',
         updated_at: FieldValue.serverTimestamp(),
       });
+      logActivity(lead.campaign_id, `⚠ Email bounced for ${lead.customer_name || lead.id}`, 'email');
     }
 
     return success;
@@ -201,6 +204,7 @@ const initiateCall = async (leadId, phoneNumber, campaignId) => {
 
     activeCallCount++;
     console.log(`[Orchestrator] Call initiated: lead=${leadId}, sid=${call.sid}`);
+    logActivity(campaignId, `📞 Calling ${phoneNumber}`, 'call');
     return call.sid;
   } catch (err) {
     console.error(`[Orchestrator] Call initiation failed for lead=${leadId}:`, err.message);
@@ -366,6 +370,7 @@ const evaluateCampaignCompletion = async (campaignId, businessId) => {
         updated_at: FieldValue.serverTimestamp(),
       });
       console.log(`[Orchestrator] Campaign ${campaignId} marked as completed.`);
+      logActivity(campaignId, '✅ Campaign completed — all leads processed', 'system');
       return true;
     }
 

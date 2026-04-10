@@ -79,4 +79,27 @@ router.delete('/:id', deleteCampaign);
 // Clear all leads for a campaign.
 router.delete('/:id/leads', clearLeads);
 
+// ── Activity Feed ────────────────────────────────────────────────────────────
+
+const { db } = require('../config/firebase');
+
+// GET /api/campaigns/:id/activity — Returns latest agent activity logs.
+router.get('/:id/activity', async (req, res) => {
+  try {
+    const logsSnap = await db
+      .collection('campaign_activity')
+      .doc(req.params.id)
+      .collection('logs')
+      .orderBy('timestamp', 'desc')
+      .limit(30)
+      .get();
+
+    const logs = logsSnap.docs.map(d => d.data());
+    return res.status(200).json({ logs });
+  } catch (err) {
+    console.error('[CampaignRoutes] activity error:', err.message);
+    return res.status(200).json({ logs: [] });
+  }
+});
+
 module.exports = router;

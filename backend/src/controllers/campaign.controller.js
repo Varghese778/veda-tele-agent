@@ -194,14 +194,13 @@ const createCampaign = async (req, res) => {
     }
 
     // ── Build campaign document ──────────────────────────────────────────────
-    const {
-      campaign_name,
-      purpose,
-      script_guidelines,
-      product_description,
-      target_audience,
-      key_details,
-    } = req.body;
+    // Sanitize: Firestore rejects `undefined` — default optional fields to ''.
+    const campaign_name = (req.body.campaign_name || '').trim();
+    const purpose = (req.body.purpose || '').trim();
+    const script_guidelines = (req.body.script_guidelines || '').trim();
+    const product_description = (req.body.product_description || '').trim();
+    const target_audience = (req.body.target_audience || '').trim();
+    const key_details = (req.body.key_details || '').trim();
 
     const now = FieldValue.serverTimestamp();
     const campaignRef = db.collection('campaigns').doc(); // Auto-generate ID.

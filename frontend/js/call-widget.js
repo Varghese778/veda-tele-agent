@@ -60,7 +60,7 @@ const validateSession = async (leadId, token) => {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Session validation failed');
+      throw new Error(err.error || err.message || 'Session validation failed');
     }
 
     return await res.json();
