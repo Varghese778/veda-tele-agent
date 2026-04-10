@@ -255,9 +255,6 @@ const connectToGemini = async (session, clientWs, systemPrompt, userVoice = 'Kor
                 }
               }
             },
-            // Enable text transcription of both input (user speech) and output (AI speech)
-            input_audio_transcription: { enabled: true },
-            output_audio_transcription: { enabled: true },
           },
           system_instruction: {
             parts: [{ text: systemPrompt }]
@@ -397,8 +394,9 @@ const connectToGemini = async (session, clientWs, systemPrompt, userVoice = 'Kor
         console.warn(`[Bridge] Gemini failed permanently for lead=${session.leadId}. Closing client.`);
         if (clientWs.readyState === WebSocket.OPEN) {
           clientWs.send(JSON.stringify({ type: 'error', message: 'Voice AI session ended unexpectedly. Please try again.' }));
+          // Delay close so the error message is received by the client
+          setTimeout(() => { try { clientWs.close(4500); } catch(_){} }, 300);
         }
-        clientWs.close(1000);
       }
     });
 
@@ -406,7 +404,7 @@ const connectToGemini = async (session, clientWs, systemPrompt, userVoice = 'Kor
     console.error(`[Bridge] Failed to connect to Gemini for lead=${session.leadId}:`, err.message);
     if (clientWs.readyState === WebSocket.OPEN) {
       clientWs.send(JSON.stringify({ type: 'error', message: 'Failed to initialize AI session. Please try again.' }));
-      clientWs.close(1000);
+      setTimeout(() => { try { clientWs.close(4500); } catch(_){} }, 300);
     }
   }
 };

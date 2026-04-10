@@ -1,6 +1,9 @@
 /**
  * @file backend/src/middleware/ratelimit.middleware.js
  * @description Simple in-memory rate limiter and usage gate middleware.
+ *
+ * Limits are generous enough for dashboard polling (analytics + leads + activity
+ * every 5 seconds = ~36 req/min) while still protecting against abuse.
  */
 
 const { db } = require('../config/firebase');
@@ -8,10 +11,26 @@ const { db } = require('../config/firebase');
 // ── In-memory rate limiter ──────────────────────────────────────────────────
 
 const windowMs = 60 * 1000; // 1 minute
-const maxRequests = 60;
+const maxRequests = 300;     // 300 requests per minute per user/IP
 const hits = new Map();
 
+// Cleanup stale entries every 5 minutes to prevent memory leak
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of hits.entries()) {
+    if (now > entry.resetAt) hits.delete(key);
+  }
+}, 5 * 60 * 1000);
+
 const rateLimiter = (req, res, next) => {
+  // Exempt voice/widget and WebSocket upgrade requests from rate limiting
+  const path = req.path || '';
+  if (path.startsWith('/voice-stream') ||
+      path.startsWith('/media-stream') ||
+      path.startsWith('/api/voice/session')) {
+    return next();
+  }
+
   const key = req.user?.uid || req.ip;
   const now = Date.now();
 

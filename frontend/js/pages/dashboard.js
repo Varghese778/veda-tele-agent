@@ -524,9 +524,9 @@ export const renderDashboard = async (container) => {
       refreshData();
       updateActivityLog();
       if (pollTimer) clearInterval(pollTimer);
-      pollTimer = setInterval(refreshData, 3000); // 3s for faster transcript updates
+      pollTimer = setInterval(refreshData, 5000); // 5s data refresh
       if (activityTimer) clearInterval(activityTimer);
-      activityTimer = setInterval(updateActivityLog, 2000); // 2s for real-time monitor
+      activityTimer = setInterval(updateActivityLog, 4000); // 4s activity refresh
     } else {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
       if (activityTimer) { clearInterval(activityTimer); activityTimer = null; }
