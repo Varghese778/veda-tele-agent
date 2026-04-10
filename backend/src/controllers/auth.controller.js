@@ -48,6 +48,7 @@ const buildPublicUser = (docId, data) => ({
   uid: docId,
   email: data.email,
   display_name: data.display_name || '',
+  photo_url: data.photo_url || '',
   admin: data.is_admin === true,
 });
 
@@ -97,6 +98,12 @@ const googleLogin = async (req, res) => {
     let userDoc;
     if (userSnap.exists) {
       userDoc = userSnap.data();
+      // Update photo_url and display_name on each login (Google may change them)
+      const updates = { updated_at: admin.firestore.FieldValue.serverTimestamp() };
+      if (payload.picture) updates.photo_url = payload.picture;
+      if (displayName && !userDoc.display_name) updates.display_name = displayName;
+      await userRef.set(updates, { merge: true });
+      userDoc = { ...userDoc, ...updates };
     } else {
       const anyUserSnapshot = await db.collection(USERS_COLLECTION).limit(1).get();
       const isBootstrapAdmin = anyUserSnapshot.empty;
@@ -106,6 +113,7 @@ const googleLogin = async (req, res) => {
         email,
         password_hash: null,
         display_name: displayName,
+        photo_url: payload.picture || '',
         is_admin: isBootstrapAdmin,
         created_at: now,
         updated_at: now,

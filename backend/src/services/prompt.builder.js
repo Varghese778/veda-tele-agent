@@ -196,7 +196,7 @@ const buildPrompt = async (leadId) => {
       console.log(`[PromptBuilder] Assembled prompt for lead=${leadId} (len: ${systemPrompt.length})`);
     }
 
-    return { systemPrompt, voice: userSettings?.voice || 'Kore', campaignId, customerName: data.customer_name };
+    return { systemPrompt, voice: userSettings?.voice || 'Kore', campaignId, customerName: data.customer_name, businessId };
   } catch (err) {
     console.error(`[PromptBuilder] Failed to build prompt for lead=${leadId}:`, err.message);
     // If it's a transient Firestore error, try to return the generic fallback instead of crashing

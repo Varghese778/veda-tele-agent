@@ -18,6 +18,7 @@ const { buildPrompt } = require('./prompt.builder');
 const { processOutcome } = require('./extraction.service');
 const { saveTranscript } = require('./transcript.service');
 const { logActivity } = require('../utils/activity.logger');
+const { db, admin } = require('../config/firebase');
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Constants
@@ -122,11 +123,31 @@ const handleConnection = async (clientWs, request) => {
   // 1. Build system prompt (dynamic per campaign)
   let systemPrompt = '';
   let userVoice = 'Kore';
+  let businessId = null;
   try {
     const promptData = await buildPrompt(leadId);
     systemPrompt = promptData.systemPrompt;
     userVoice = promptData.voice || 'Kore';
     campaignIdForLog = promptData.campaignId || null;
+    businessId = promptData.businessId || null;
+
+    // Check usage limits
+    if (businessId) {
+      const settingsSnap = await db.collection('user_settings').doc(businessId).get();
+      const s = settingsSnap.exists ? settingsSnap.data() : {};
+      const used = s.usage_count || 0;
+      const limit = s.usage_limit || 50;
+      if (used >= limit) {
+        console.warn(`[Bridge] Usage limit reached for business=${businessId} (${used}/${limit})`);
+        if (isBrowser && clientWs.readyState === WebSocket.OPEN) {
+          clientWs.send(JSON.stringify({ type: 'error', message: 'Trial limit reached. Please upgrade to continue using voice sessions.' }));
+        }
+        clientWs.close();
+        sessions.delete(leadId);
+        return;
+      }
+    }
+
     if (campaignIdForLog) {
       logActivity(campaignIdForLog, `🎙 ${isBrowser ? 'Widget' : 'Twilio'} connected — ${promptData.customerName || 'Lead'}`, 'call');
     }
@@ -342,10 +363,28 @@ const teardownSession = async (leadId) => {
   session.isClosing = true;
   console.log(`[Bridge] Tearing down session: lead=${leadId}`);
 
+  // Save transcript
   if (session.transcriptChunks.length > 0) {
     saveTranscript(leadId, session.transcriptChunks).catch(err => {
       console.error('[Bridge] saveTranscript failure:', err.message);
     });
+  }
+
+  // Increment usage counter
+  try {
+    const leadSnap = await db.collection('leads').doc(leadId).get();
+    if (leadSnap.exists) {
+      const bId = leadSnap.data().business_id;
+      if (bId) {
+        await db.collection('user_settings').doc(bId).set(
+          { usage_count: admin.firestore.FieldValue.increment(1) },
+          { merge: true }
+        );
+        console.log(`[Bridge] Usage incremented for business=${bId}`);
+      }
+    }
+  } catch (e) {
+    console.warn('[Bridge] Failed to increment usage:', e.message);
   }
 
   if (session.geminiWs && session.geminiWs.readyState === WebSocket.OPEN) {

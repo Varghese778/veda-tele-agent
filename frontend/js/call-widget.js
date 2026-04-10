@@ -221,6 +221,13 @@ const connectWebSocket = (leadId, token) => {
           preview.scrollTop = preview.scrollHeight;
         }
       }
+
+      if (msg.type === 'error') {
+        console.error('[Widget] Server error:', msg.message);
+        document.getElementById('errorMessage').textContent = msg.message || 'Session error.';
+        showState('error-state');
+        stopMicCapture();
+      }
     } catch (err) {
       console.warn('[Widget] WS message error:', err.message);
     }
