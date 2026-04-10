@@ -144,14 +144,16 @@ const buildPrompt = async (leadId) => {
     const campaignId = lead.campaign_id;
     const businessId = lead.business_id;
 
-    // 3. Parallel Lookup for Campaign and Business
-    const [campaignSnap, businessSnap] = await Promise.all([
+    // 3. Parallel Lookup for Campaign, Business, and User Settings
+    const [campaignSnap, businessSnap, settingsSnap] = await Promise.all([
       db.collection('campaigns').doc(campaignId).get(),
       db.collection('businesses').doc(businessId).get(),
+      db.collection('user_settings').doc(businessId).get(),
     ]);
 
     const campaign = campaignSnap.exists ? campaignSnap.data() : null;
     const business = businessSnap.exists ? businessSnap.data() : null;
+    const userSettings = settingsSnap.exists ? settingsSnap.data() : null;
 
     if (!campaign || !business) {
       console.warn(`[PromptBuilder] Missing campaign or business doc for lead=${leadId}. Handling gracefully.`);
@@ -168,8 +170,15 @@ const buildPrompt = async (leadId) => {
       customer_name: lead.customer_name || 'Customer',
     };
 
-    // 5. Final Assembly
-    const systemPrompt = replacePlaceholders(SYSTEM_PROMPT_TEMPLATE, data);
+    // 5. Final Assembly — use custom prompt if user has set one, otherwise use template
+    let systemPrompt;
+    const customPrompt = userSettings?.system_prompt?.trim();
+    if (customPrompt && customPrompt.length > 20) {
+      // Merge custom prompt with campaign context
+      systemPrompt = `${customPrompt}\n\n## CAMPAIGN CONTEXT\n- Business: ${data.business_name} (${data.business_type})\n- Goal: ${data.campaign_goal}\n- Product: ${data.product_description}\n- Customer Name: ${data.customer_name}\n- Target Audience: ${data.target_audience}\n- Key Details: ${data.key_details}`;
+    } else {
+      systemPrompt = replacePlaceholders(SYSTEM_PROMPT_TEMPLATE, data);
+    }
 
     // 6. Update Cache
     cache.set(leadId, {
@@ -181,7 +190,7 @@ const buildPrompt = async (leadId) => {
       console.log(`[PromptBuilder] Assembled prompt for lead=${leadId} (len: ${systemPrompt.length})`);
     }
 
-    return { systemPrompt };
+    return { systemPrompt, voice: userSettings?.voice || 'Kore' };
   } catch (err) {
     console.error(`[PromptBuilder] Failed to build prompt for lead=${leadId}:`, err.message);
     // If it's a transient Firestore error, try to return the generic fallback instead of crashing

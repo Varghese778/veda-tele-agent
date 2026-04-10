@@ -19,7 +19,7 @@ services:
       - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
       - TWILIO_NUMBER=${TWILIO_NUMBER}
       - GOOGLE_APPLICATION_CREDENTIALS=application_default_credentials.json
-      - BACKEND_URL=http://localhost:8080
+      - BACKEND_URL=${BACKEND_URL}
     volumes:
       - ./backend:/app
       - /app/node_modules

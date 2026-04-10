@@ -3,7 +3,7 @@
  * @description MOD-12 — AnalyticsDashboardModule Service.
  *
  * Provides aggregated business and platform performance metrics.
- * Includes a 30-second in-memory TTL cache to optimize Firestore reads.
+ * Uses a short TTL cache (10s) to balance freshness vs Firestore reads.
  */
 
 const { db, admin } = require('../config/firebase');
@@ -12,24 +12,15 @@ const { db, admin } = require('../config/firebase');
 // Cache Layer
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-const ANALYTICS_CACHE_TTL_MS = 30 * 1000; // 30 seconds
-const cache = new Map(); // Key: 'type:id', Value: { data, expiresAt }
+const ANALYTICS_CACHE_TTL_MS = 10 * 1000; // 10 seconds — short for near-real-time updates.
+const cache = new Map();
 
-/**
- * getCachedData — Retrieves data if not expired.
- * @param {string} key
- */
 const getCachedData = (key) => {
   const entry = cache.get(key);
   if (entry && Date.now() < entry.expiresAt) return entry.data;
   return null;
 };
 
-/**
- * setCacheData — Stores data with TTL.
- * @param {string} key
- * @param {any} data
- */
 const setCacheData = (key, data) => {
   cache.set(key, {
     data,
@@ -42,18 +33,34 @@ const setCacheData = (key, data) => {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
+ * All possible funnel statuses. Pre-initializing ensures the API always
+ * returns all keys — the frontend doesn't need to handle undefined.
+ */
+const EMPTY_STATUS = () => ({
+  pending: 0,
+  email_sent: 0,
+  widget_started: 0,
+  qualified: 0,
+  call_booked: 0,
+  calling: 0,
+  completed: 0,
+  not_interested: 0,
+  callback: 0,
+  failed: 0,
+  retry_queued: 0,
+});
+
+const EMPTY_INTENT = () => ({
+  INTERESTED: 0,
+  NOT_INTERESTED: 0,
+  CALLBACK: 0,
+});
+
+/**
  * calculateAnalytics — Unified logic for aggregating lead data.
- * Works for both a single campaign and an entire business.
- * 
- * Aggregation strategy: Query leads and reduce in-memory for breakdowns.
- * Note: For 24h MVP, we use query + reduce. For large scale, we'd use 
- * Firestore count() aggregations or a dedicated warehouse.
- * 
- * @param {FirebaseFirestore.Query} baseQuery
  */
 const calculateAnalytics = async (baseQuery) => {
   const snapshot = await baseQuery.get();
-  
   const leads = snapshot.docs.map(doc => doc.data());
   const total = leads.length;
 
@@ -63,24 +70,26 @@ const calculateAnalytics = async (baseQuery) => {
       qualified_leads: 0,
       conversion_rate: 0,
       average_duration_sec: 0,
-      intent_breakdown: { INTERESTED: 0, NOT_INTERESTED: 0, CALLBACK: 0 },
-      status_breakdown: { pending: 0, calling: 0, completed: 0, failed: 0 }
+      intent_breakdown: EMPTY_INTENT(),
+      status_breakdown: EMPTY_STATUS(),
     };
   }
 
-  const intentBreakdown = { INTERESTED: 0, NOT_INTERESTED: 0, CALLBACK: 0 };
-  const statusBreakdown = { pending: 0, calling: 0, completed: 0, failed: 0 };
+  const intentBreakdown = EMPTY_INTENT();
+  const statusBreakdown = EMPTY_STATUS();
   let qualifiedCount = 0;
   let totalDuration = 0;
   let durationCount = 0;
 
   leads.forEach(lead => {
-    // Intent Breakdown
-    const intent = lead.extracted_data?.intent || 'NOT_INTERESTED';
-    intentBreakdown[intent] = (intentBreakdown[intent] || 0) + 1;
-    if (intent === 'INTERESTED') qualifiedCount++;
+    // Intent — only count leads that have been analyzed.
+    const intent = lead.extracted_data?.intent;
+    if (intent) {
+      intentBreakdown[intent] = (intentBreakdown[intent] || 0) + 1;
+      if (intent === 'INTERESTED') qualifiedCount++;
+    }
 
-    // Status Breakdown
+    // Status — always count.
     const status = lead.call_status || 'pending';
     statusBreakdown[status] = (statusBreakdown[status] || 0) + 1;
 
@@ -97,7 +106,7 @@ const calculateAnalytics = async (baseQuery) => {
     conversion_rate: parseFloat(((qualifiedCount / total) * 100).toFixed(2)),
     average_duration_sec: durationCount > 0 ? parseFloat((totalDuration / durationCount).toFixed(2)) : 0,
     intent_breakdown: intentBreakdown,
-    status_breakdown: statusBreakdown
+    status_breakdown: statusBreakdown,
   };
 };
 
@@ -109,7 +118,6 @@ const getCampaignAnalytics = async (campaignId, businessId) => {
   const cached = getCachedData(cacheKey);
   if (cached) return cached;
 
-  // Query leads scoped to campaign and business
   const query = db.collection('leads')
     .where('business_id', '==', businessId)
     .where('campaign_id', '==', campaignId);
@@ -120,7 +128,7 @@ const getCampaignAnalytics = async (campaignId, businessId) => {
 };
 
 /**
- * getBusinessAnalytics — Returns stats aggregated across all campaigns for a business.
+ * getBusinessAnalytics — Returns stats aggregated across all campaigns.
  */
 const getBusinessAnalytics = async (businessId) => {
   const cacheKey = `business:${businessId}`;
@@ -136,7 +144,7 @@ const getBusinessAnalytics = async (businessId) => {
 };
 
 /**
- * getGlobalStats — Reads platform-wide totals from global stats document.
+ * getGlobalStats — Reads platform-wide totals.
  */
 const getGlobalStats = async () => {
   const cacheKey = 'global:stats';
@@ -145,7 +153,6 @@ const getGlobalStats = async () => {
 
   const statsSnap = await db.collection('platform_stats').doc('global').get();
   
-  // Default values if document hasn't been initialized yet
   const defaultStats = {
     total_businesses: 0,
     total_campaigns: 0,
@@ -154,8 +161,6 @@ const getGlobalStats = async () => {
   };
 
   const data = statsSnap.exists ? { ...defaultStats, ...statsSnap.data() } : defaultStats;
-  
-  // Cleanup Firestore timestamp if it exists to keep JSON clean
   delete data.last_updated;
 
   setCacheData(cacheKey, data);

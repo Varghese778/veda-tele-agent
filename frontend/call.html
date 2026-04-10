@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Veda AI — Voice Conversation</title>
+    <meta name="description" content="Speak with our AI assistant — no downloads, no typing, just talk.">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Widget Styles -->
+    <link rel="stylesheet" href="css/call-widget.css">
+
+    <!-- Env Config -->
+    <script src="env-config.js"></script>
+</head>
+<body>
+    <div id="widget-root">
+        <!-- Loading State -->
+        <div id="loading-state" class="widget-state active">
+            <div class="orb-container">
+                <canvas id="orbCanvas" width="300" height="300"></canvas>
+            </div>
+            <h2 class="widget-title">Connecting...</h2>
+            <p class="widget-subtitle">Please wait while we set things up.</p>
+        </div>
+
+        <!-- Ready State -->
+        <div id="ready-state" class="widget-state">
+            <div class="brand-header">
+                <span class="brand-logo">⚡ VEDA</span>
+                <span id="businessNameHeader" class="brand-name"></span>
+            </div>
+            <div class="orb-container">
+                <canvas id="orbCanvasReady" width="300" height="300"></canvas>
+            </div>
+            <h2 class="widget-title">Hi <span id="customerNameDisplay">there</span>!</h2>
+            <p class="widget-subtitle" id="readySubtitle">Ready to speak with our AI assistant? It only takes 2 minutes.</p>
+            <button id="startCallBtn" class="cta-button">
+                <i class="fas fa-microphone"></i>
+                Start Conversation
+            </button>
+            <p class="widget-hint">🔇 We only use your microphone — no camera required.</p>
+        </div>
+
+        <!-- Active Call State -->
+        <div id="active-state" class="widget-state">
+            <div class="brand-header">
+                <span class="brand-logo">⚡ VEDA</span>
+                <span class="brand-name" id="businessNameActive"></span>
+            </div>
+            <div class="orb-container orb-active">
+                <canvas id="orbCanvasActive" width="300" height="300"></canvas>
+            </div>
+            <div id="statusIndicator" class="status-indicator">
+                <span class="pulse-dot"></span>
+                <span id="statusText">Listening...</span>
+            </div>
+            <div id="transcriptPreview" class="transcript-preview"></div>
+            <button id="endCallBtn" class="end-button">
+                <i class="fas fa-phone-slash"></i>
+                End Conversation
+            </button>
+        </div>
+
+        <!-- Completed State -->
+        <div id="completed-state" class="widget-state">
+            <div class="orb-container">
+                <canvas id="orbCanvasComplete" width="300" height="300"></canvas>
+            </div>
+            <div id="completedIcon" class="completed-icon">✅</div>
+            <h2 class="widget-title" id="completedTitle">Thank you!</h2>
+            <p class="widget-subtitle" id="completedSubtitle">We appreciate your time. You'll hear from us soon!</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="widget-state">
+            <div class="error-icon">⚠️</div>
+            <h2 class="widget-title">Something went wrong</h2>
+            <p class="widget-subtitle" id="errorMessage">This session may have expired. Please check your email for a new link.</p>
+        </div>
+    </div>
+
+    <script type="module" src="js/audio-orb.js"></script>
+    <script type="module" src="js/call-widget.js"></script>
+</body>
+</html>

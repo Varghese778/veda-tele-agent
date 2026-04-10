@@ -3,8 +3,9 @@
  * @description CallOrchestratorModule (MOD-05) — background campaign execution engine.
  *
  * This service runs a polling loop every POLLING_INTERVAL_MS (10s), queries
- * active campaigns, selects eligible leads, and dispatches outbound Twilio
- * calls with rate limiting and concurrency control.
+ * active campaigns, selects eligible leads, and dispatches outbound emails
+ * with voice widget links for initial qualification. Twilio calls are only
+ * initiated by the escalation service for leads qualified via the widget.
  *
  * Exported API:
  *   - startOrchestrator()                        — Idempotent: starts the poll loop.
@@ -26,6 +27,7 @@
 
 const { admin, db } = require('../config/firebase');
 const { twilioClient, TWILIO_NUMBER } = require('../config/twilio');
+const { sendCallEmail } = require('./email.service');
 
 const FieldValue = admin.firestore.FieldValue;
 
@@ -36,11 +38,8 @@ const FieldValue = admin.firestore.FieldValue;
 /** How often the orchestrator polls for work (milliseconds). */
 const POLLING_INTERVAL_MS = 10_000;
 
-/** Maximum number of simultaneously active calls across all campaigns. */
-const MAX_CONCURRENT_CALLS = 10;
-
-/** Delay between consecutive call initiations (milliseconds). */
-const INTER_CALL_DELAY_MS = 2_000;
+/** Maximum number of emails to send per poll cycle. */
+const MAX_EMAILS_PER_CYCLE = 20;
 
 /** Minimum cooling period before a retry_queued lead is re-eligible (ms). */
 const RETRY_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
@@ -115,21 +114,59 @@ const isLeadEligible = (lead, retryLimit, nowMs) => {
  */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Core — Call Initiation
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+/**
+ * sendEmailToLead — Sends a voice widget email to a lead.
+ *
+ * On success:
+ *   - Updates lead to `email_sent`, sets `email_sent_at`.
+ *
+ * @param {object} lead — Lead document data + id.
+ * @param {object} campaign — Campaign document data.
+ * @returns {Promise<boolean>}
+ */
+const sendEmailToLead = async (lead, campaign) => {
+  try {
+    // Fetch business for personalization.
+    let business = { business_name: 'Our Team' };
+    if (campaign.business_id) {
+      const bizSnap = await db.collection('businesses').doc(campaign.business_id).get();
+      if (bizSnap.exists) business = bizSnap.data();
+    }
+
+    const leadObj = {
+      lead_id: lead.id,
+      email: lead.email,
+      customer_name: lead.customer_name,
+      campaign_id: lead.campaign_id,
+    };
+
+    const success = await sendCallEmail(leadObj, campaign, business);
+
+    if (success) {
+      await db.collection('leads').doc(lead.id).update({
+        call_status: 'email_sent',
+        email_sent_at: FieldValue.serverTimestamp(),
+        updated_at: FieldValue.serverTimestamp(),
+      });
+      console.log(`[Orchestrator] Email sent to lead=${lead.id}`);
+    } else {
+      // No email possible — mark as email_bounced.
+      await db.collection('leads').doc(lead.id).update({
+        call_status: 'email_bounced',
+        updated_at: FieldValue.serverTimestamp(),
+      });
+    }
+
+    return success;
+  } catch (err) {
+    console.error(`[Orchestrator] Email dispatch failed for lead=${lead.id}:`, err.message);
+    return false;
+  }
+};
 
 /**
  * initiateCall — Dials a single lead via the Twilio REST API.
- *
- * On success:
- *   - Updates lead to `calling`, increments `attempt_count`,
- *     sets `twilio_call_sid`, `called_at`, and `last_attempt_at`.
- *   - Increments in-memory `activeCallCount`.
- *
- * On Twilio failure:
- *   - Logs the error and does NOT increment `attempt_count`.
- *   - The lead remains in its current state for the next polling cycle.
+ * Used by the escalation service for Stage 2 follow-up calls.
  *
  * @param {string} leadId
  * @param {string} phoneNumber — E.164 format.
@@ -153,7 +190,6 @@ const initiateCall = async (leadId, phoneNumber, campaignId) => {
       recordingStatusCallback: `${BACKEND_URL}/twilio/recording/${leadId}`,
     });
 
-    // ── Update lead in Firestore ─────────────────────────────────────────────
     const now = FieldValue.serverTimestamp();
     await db.collection('leads').doc(leadId).update({
       call_status: 'calling',
@@ -167,7 +203,6 @@ const initiateCall = async (leadId, phoneNumber, campaignId) => {
     console.log(`[Orchestrator] Call initiated: lead=${leadId}, sid=${call.sid}`);
     return call.sid;
   } catch (err) {
-    // Do NOT increment attempt_count on Twilio failure — allow retry next cycle.
     console.error(`[Orchestrator] Call initiation failed for lead=${leadId}:`, err.message);
     return null;
   }
@@ -314,7 +349,7 @@ const evaluateCampaignCompletion = async (campaignId, businessId) => {
 
   try {
     // Query for any lead that is still in an active state.
-    const activeStatuses = ['pending', 'calling', 'retry_queued'];
+    const activeStatuses = ['pending', 'calling', 'retry_queued', 'email_sent', 'widget_started', 'qualified', 'call_booked'];
 
     const activeLeads = await db
       .collection('leads')
@@ -386,10 +421,8 @@ const pollAndDispatch = async () => {
   isPolling = true;
 
   try {
-    // ── Skip if at concurrency limit ─────────────────────────────────────────
-    if (activeCallCount >= MAX_CONCURRENT_CALLS) {
-      return;
-    }
+    // ── Skip if too many active emails/calls this cycle ──────────────────────
+    let emailsSentThisCycle = 0;
 
     // ── 1. Query active campaigns (stable order) ─────────────────────────────
     const campaignsSnap = await db
@@ -404,7 +437,7 @@ const pollAndDispatch = async () => {
 
     // ── 2. Process each campaign ─────────────────────────────────────────────
     for (const campaignDoc of campaignsSnap.docs) {
-      if (activeCallCount >= MAX_CONCURRENT_CALLS) break;
+      if (emailsSentThisCycle >= MAX_EMAILS_PER_CYCLE) break;
 
       const campaign = campaignDoc.data();
       const campaignId = campaignDoc.id;
@@ -418,7 +451,7 @@ const pollAndDispatch = async () => {
         .where('business_id', '==', campaign.business_id)
         .where('call_status', '==', 'pending')
         .orderBy('__name__') // Stable order by doc ID (effectively creation order).
-        .limit(MAX_CONCURRENT_CALLS - activeCallCount)
+        .limit(MAX_EMAILS_PER_CYCLE - emailsSentThisCycle)
         .get();
 
       const retryLeads = await db
@@ -427,7 +460,7 @@ const pollAndDispatch = async () => {
         .where('business_id', '==', campaign.business_id)
         .where('call_status', '==', 'retry_queued')
         .orderBy('last_attempt_at', 'asc')
-        .limit(MAX_CONCURRENT_CALLS - activeCallCount)
+        .limit(MAX_EMAILS_PER_CYCLE - emailsSentThisCycle)
         .get();
 
       // Merge and filter for eligibility.
@@ -439,12 +472,13 @@ const pollAndDispatch = async () => {
         isLeadEligible(lead, retryLimit, nowMs)
       );
 
-      // ── 4. Dial eligible leads with rate limiting ──────────────────────────
+      // ── 4. Send emails to eligible leads ────────────────────────────────────
       for (const lead of eligibleLeads) {
-        if (activeCallCount >= MAX_CONCURRENT_CALLS) break;
+        if (emailsSentThisCycle >= MAX_EMAILS_PER_CYCLE) break;
 
-        await initiateCall(lead.id, lead.phone_number, campaignId);
-        await sleep(INTER_CALL_DELAY_MS);
+        await sendEmailToLead(lead, campaign);
+        emailsSentThisCycle++;
+        await sleep(500); // Brief delay between emails.
       }
     }
   } catch (err) {
@@ -474,7 +508,7 @@ const startOrchestrator = async () => {
   }
 
   console.log('[Orchestrator] Starting call orchestrator...');
-  console.log(`[Orchestrator] Config: poll=${POLLING_INTERVAL_MS}ms, maxConcurrent=${MAX_CONCURRENT_CALLS}, callDelay=${INTER_CALL_DELAY_MS}ms`);
+  console.log(`[Orchestrator] Config: poll=${POLLING_INTERVAL_MS}ms, maxEmails=${MAX_EMAILS_PER_CYCLE}`);
 
   // Sync in-memory state from Firestore on boot.
   await syncActiveCallCount();
@@ -512,7 +546,6 @@ module.exports = {
   isLeadEligible,
   // Constants exported for testing / reference:
   POLLING_INTERVAL_MS,
-  MAX_CONCURRENT_CALLS,
-  INTER_CALL_DELAY_MS,
+  MAX_EMAILS_PER_CYCLE,
   RETRY_COOLDOWN_MS,
 };

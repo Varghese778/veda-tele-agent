@@ -32,7 +32,7 @@ const getCampaignAnalytics = async (req, res) => {
     
     return res.status(200).json({
       campaign_id: campaignId,
-      campaign_name: campaignData.name,
+      campaign_name: campaignData.campaign_name,
       ...stats
     });
   } catch (err) {

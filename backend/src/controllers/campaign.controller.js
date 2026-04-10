@@ -498,12 +498,15 @@ const getAnalytics = async (req, res) => {
     return res.status(200).json({
       campaign_id: req.params.id,
       total_leads: totalLeads,
+      total_calls: totalLeads,
       completed_calls: completedCalls,
       failed_calls: callStatusBreakdown.failed,
+      qualified_leads: intentBreakdown.INTERESTED + intentBreakdown.CALLBACK,
       conversion_rate: conversionRate,
       avg_duration: avgDuration,
       intent_breakdown: intentBreakdown,
       call_status_breakdown: callStatusBreakdown,
+      status_breakdown: callStatusBreakdown,
     });
   } catch (err) {
     console.error('[CampaignController] getAnalytics error:', err.message);

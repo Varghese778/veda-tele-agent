@@ -254,4 +254,62 @@ const uploadLeads = async (req, res) => {
   }
 };
 
-module.exports = { uploadLeads };
+/**
+ * listLeads — Returns leads for a campaign owned by the authenticated business.
+ */
+const listLeads = async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const campaignId = req.params.id;
+
+    const campaignRef = db.collection('campaigns').doc(campaignId);
+    const campaignSnap = await campaignRef.get();
+
+    if (!campaignSnap.exists) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Campaign not found.',
+      });
+    }
+
+    const campaignData = campaignSnap.data();
+    if (campaignData.business_id !== uid) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Campaign not found.',
+      });
+    }
+
+    const leadsSnap = await db
+      .collection('leads')
+      .where('business_id', '==', uid)
+      .where('campaign_id', '==', campaignId)
+      .limit(200)
+      .get();
+
+    const leads = leadsSnap.docs.map((doc) => {
+      const d = doc.data();
+      return {
+        lead_id: doc.id,
+        customer_name: d.customer_name || '',
+        phone_number: d.phone_number || '',
+        email: d.email || '',
+        call_status: d.call_status || 'pending',
+        extracted_data: d.extracted_data || {},
+        transcript: d.transcript || '',
+        call_duration_sec: d.call_duration_sec || 0,
+        called_at: d.called_at || null,
+      };
+    });
+
+    return res.status(200).json({ leads });
+  } catch (err) {
+    console.error('[LeadController] listLeads error:', err.message);
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to fetch campaign leads.',
+    });
+  }
+};
+
+module.exports = { uploadLeads, listLeads };

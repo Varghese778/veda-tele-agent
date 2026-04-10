@@ -122,10 +122,10 @@ const googleLogin = async (req, res) => {
       user: buildPublicUser(userId, userDoc),
     });
   } catch (err) {
-    console.error('[AuthController] googleLogin error:', err.message);
+    console.error('[AuthController] googleLogin error:', err.message, err.stack);
     return res.status(401).json({
       error: 'Unauthorized',
-      message: 'Invalid Google credential.',
+      message: `Invalid Google credential. Detail: ${err.message}`,
     });
   }
 };
@@ -188,10 +188,10 @@ const register = async (req, res) => {
       user: buildPublicUser(userId, userDoc),
     });
   } catch (err) {
-    console.error('[AuthController] register error:', err.message);
+    console.error('[AuthController] register error:', err.message, err.stack);
     return res.status(500).json({
       error: 'Internal Server Error',
-      message: 'Failed to create account.',
+      message: `Failed to create account. Detail: ${err.message}`,
     });
   }
 };

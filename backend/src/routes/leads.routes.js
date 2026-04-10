@@ -19,7 +19,7 @@
 const { Router } = require('express');
 const multer = require('multer');
 const { verifyToken } = require('../middleware/auth.middleware');
-const { uploadLeads } = require('../controllers/lead.controller');
+const { uploadLeads, listLeads } = require('../controllers/lead.controller');
 
 const router = Router();
 
@@ -103,5 +103,8 @@ router.post(
   handleMulterError,
   uploadLeads
 );
+
+// GET /api/campaigns/:id/leads
+router.get('/:id/leads', verifyToken, listLeads);
 
 module.exports = router;

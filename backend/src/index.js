@@ -23,6 +23,11 @@ const twilioRoutes = require('./routes/twilio.routes');
 const transcriptRoutes = require('./routes/transcript.routes');
 const recordingRoutes = require('./routes/recording.routes');
 const analyticsRoutes = require('./routes/analytics.routes');
+const settingsRoutes = require('./routes/settings.routes');
+const voiceRoutes = require('./routes/voice.routes');
+
+// ── Middleware imports ───────────────────────────────────────────────────────
+const { rateLimiter } = require('./middleware/ratelimit.middleware');
 
 // ── Service imports ──────────────────────────────────────────────────────────
 const { startOrchestrator, stopOrchestrator } = require('./services/orchestrator.service');
@@ -35,6 +40,7 @@ const PORT = process.env.PORT || 8080;
 // ── Global middleware ────────────────────────────────────────────────────────
 app.use(cors());                  // Allow cross-origin requests (frontend on Firebase Hosting)
 app.use(express.json());          // Parse JSON request bodies
+app.use(rateLimiter);             // Rate limiting on all routes
 
 // ── Health check endpoint ────────────────────────────────────────────────────
 // Used by Cloud Run health probes and Docker HEALTHCHECK.
@@ -52,6 +58,8 @@ app.use('/twilio', twilioRoutes);           // MOD-06: Twilio webhook routes (no
 app.use('/', transcriptRoutes);             // MOD-10: Transcript routes (handles nested patterns)
 app.use('/', recordingRoutes);              // MOD-11: Recording proxy routes (handles nested patterns)
 app.use('/', analyticsRoutes);              // MOD-12: Analytics routes (handles nested patterns)
+app.use('/api/settings', settingsRoutes);   // User settings routes
+app.use('/api/voice', voiceRoutes);         // Voice widget routes
 
 // ── Global error handler ─────────────────────────────────────────────────────
 // Catches any unhandled errors from downstream middleware/controllers.

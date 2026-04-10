@@ -127,9 +127,11 @@ const handleTwilioConnection = async (twilioWs, request) => {
 
   // 1. Fetch system prompt once at boot.
   let systemPrompt = '';
+  let userVoice = 'Kore';
   try {
     const promptData = await buildPrompt(leadId);
     systemPrompt = promptData.systemPrompt;
+    userVoice = promptData.voice || 'Kore';
   } catch (err) {
     console.error(`[Bridge] Failed to build prompt for lead=${leadId}:`, err.message);
     twilioWs.close();
@@ -137,7 +139,7 @@ const handleTwilioConnection = async (twilioWs, request) => {
   }
 
   // 2. Connect to Gemini Live.
-  await connectToGemini(session, twilioWs, systemPrompt);
+  await connectToGemini(session, twilioWs, systemPrompt, userVoice);
 
   // 3. Handle messages from Twilio.
   twilioWs.on('message', async (data) => {
@@ -183,7 +185,7 @@ const handleTwilioConnection = async (twilioWs, request) => {
 /**
  * connectToGemini — Establishes the WebSocket connection to Vertex AI.
  */
-const connectToGemini = async (session, twilioWs, systemPrompt) => {
+const connectToGemini = async (session, twilioWs, systemPrompt, userVoice = 'Kore') => {
   try {
     const client = await auth.getClient();
     const token = await client.getAccessToken();
@@ -206,6 +208,13 @@ const connectToGemini = async (session, twilioWs, systemPrompt) => {
           model: `projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${MODEL}`,
           generation_config: {
             response_modalities: ['AUDIO'],
+            speech_config: {
+              voice_config: {
+                prebuilt_voice_config: {
+                  voice_name: userVoice,
+                }
+              }
+            }
           },
           system_instruction: {
             parts: [{ text: systemPrompt }]
@@ -277,7 +286,7 @@ const connectToGemini = async (session, twilioWs, systemPrompt) => {
       if (!session.isClosing && session.reconnectAttempts < 1) {
         session.reconnectAttempts++;
         console.log(`[Bridge] Attempting 1x reconnect for lead=${session.leadId}...`);
-        await connectToGemini(session, twilioWs, systemPrompt);
+        await connectToGemini(session, twilioWs, systemPrompt, userVoice);
       } else if (!session.isClosing) {
         console.warn(`[Bridge] Gemini connection failed permanently for lead=${session.leadId}. Closing Twilio.`);
         twilioWs.close();

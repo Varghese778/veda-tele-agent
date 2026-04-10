@@ -1,0 +1,23 @@
+# Ignore local/dev files for Cloud Run source deploy
+.gcloudignore
+.git
+.vscode
+node_modules
+**/node_modules
+.env
+*.log
+application_default_credentials.json
+firebase-key.json
+frontend/
+docs/
+scripts/
+.DS_Store
+Thumbs.db
+
+docker-compose.yml
+Dockerfile
+requirements.txt
+walkthrough.md
+task.md
+implementation_plan.md
+README.md

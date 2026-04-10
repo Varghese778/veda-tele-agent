@@ -13,11 +13,13 @@ import { renderLanding } from "./pages/landing.js";
 import { renderOnboarding } from "./pages/onboarding.js";
 import { renderDashboard } from "./pages/dashboard.js";
 import { renderAdmin } from "./pages/admin.js";
+import { renderSettings } from "./pages/settings.js";
 
 const routes = {
     '/': { renderer: renderLanding, protected: false },
     '/onboarding': { renderer: renderOnboarding, protected: true },
     '/dashboard': { renderer: renderDashboard, protected: true },
+    '/settings': { renderer: renderSettings, protected: true },
     '/admin': { renderer: renderAdmin, protected: true, adminOnly: true }
 };
 

@@ -7,47 +7,69 @@ import { navigate } from "../router.js";
 
 export const renderLanding = async (container) => {
     container.innerHTML = `
-        <div class="landing-page animate-fade-in">
-            <nav class="navbar glass">
-                <div class="container flex justify-between items-center">
+        <div class="split-landing-page animate-fade-in">
+            <!-- Left Pane: Visual & Branding -->
+            <div class="split-left">
+                <div class="split-left-content">
                     <div class="logo font-heading flex items-center gap-md">
-                        <i class="fas fa-microchip text-primary"></i>
-                        <span>VEDA</span>
+                        <i class="fas fa-microchip text-primary" style="font-size: 1.5rem;"></i>
+                        <span style="font-size: 1.25rem; font-weight: 700; letter-spacing: 1px;">VEDA</span>
+                    </div>
+                    <div class="split-left-text">
+                        <p class="eyebrow">A WISE QUOTE</p>
+                        <h1 class="font-heading">Get<br>Everything<br>You Want</h1>
+                        <p class="subtitle text-muted mt-md">Empower your business with autonomous voice agents that qualify leads, handle objections, and close deals while you sleep.</p>
                     </div>
                 </div>
-            </nav>
+            </div>
 
-            <main class="hero container flex flex-col items-center justify-center text-center">
-                <h1 class="hero-title">Intelligent AI Tele-Calling<br/><span class="text-primary">At Scale</span></h1>
-                <p class="hero-subtitle text-muted">Empower your business with autonomous voice agents that qualify leads, handle objections, and close deals while you sleep.</p>
-                
-                <div class="login-box glass p-lg">
-                    <h3>Get Started</h3>
-                    <p class="text-muted">Create an account or sign in to access your dashboard.</p>
-                    <div id="googleBtnContainer" class="mb-md"></div>
-                    <div class="text-muted" style="margin: 8px 0;">or use email/password</div>
-                    <div class="form-group">
-                        <input type="email" id="emailInput" placeholder="Email" required>
+            <!-- Right Pane: Auth Form -->
+            <div class="split-right">
+                <div class="auth-container">
+                    <div class="auth-header text-center mb-xl">
+                        <h2 class="font-heading" style="font-size: 2.5rem; margin-bottom: 8px;">Welcome Back</h2>
+                        <p class="text-muted" style="font-size: 0.95rem;">Enter your email and password to access your account</p>
                     </div>
-                    <div class="form-group">
-                        <input type="password" id="passwordInput" placeholder="Password (min 8 chars)" required>
-                    </div>
-                    <div class="form-group">
-                        <input type="text" id="nameInput" placeholder="Display name (optional)">
-                    </div>
-                    <div class="flex gap-md" style="display:flex; gap: 10px; margin-top: 10px;">
-                        <button id="loginBtn" class="btn btn-primary" style="flex:1;">
-                            Sign In
-                        </button>
-                        <button id="registerBtn" class="btn btn-outline" style="flex:1;">
-                            Register
-                        </button>
-                    </div>
-                    <p class="terms">By signing in, you agree to our Terms of Service.</p>
+                    
+                    <form class="auth-form" id="authForm" onsubmit="return false;">
+                        <div class="form-group mb-lg">
+                            <label>Email</label>
+                            <input type="email" id="emailInput" placeholder="Enter your email" required>
+                        </div>
+                        <div class="form-group mb-md">
+                            <label>Password</label>
+                            <input type="password" id="passwordInput" placeholder="Enter your password (min 8 chars)" required>
+                        </div>
+                        <div class="form-group mb-lg" style="margin-bottom: 24px;">
+                            <label>Display Name (optional for register)</label>
+                            <input type="text" id="nameInput" placeholder="Display name">
+                        </div>
+                        
+                        <div class="flex justify-between items-center mb-xl text-sm text-muted">
+                            <label class="flex items-center gap-sm cursor-pointer">
+                                <input type="checkbox" id="rememberMe"> Remember me
+                            </label>
+                            <a href="#" class="forgot-link">Forgot Password</a>
+                        </div>
+                        
+                        <div class="auth-actions flex flex-col gap-md">
+                            <button id="loginBtn" class="btn btn-solid-dark w-full py-md" style="padding: 14px; border-radius: 12px; font-weight: 600; font-size: 1rem;">
+                                Sign In
+                            </button>
+                            <button id="registerBtn" class="btn btn-outline w-full py-md" style="padding: 14px; border-radius: 12px; font-weight: 600; font-size: 1rem;">
+                                Register
+                            </button>
+                        </div>
+                        
+                        <div class="divider text-muted text-sm text-center my-lg" style="margin: 24px 0; position: relative;">
+                            <span style="background: var(--color-surface); padding: 0 10px; position: relative; z-index: 1;">Or</span>
+                            <div style="position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: var(--color-border); z-index: 0;"></div>
+                        </div>
+
+                        <div id="googleBtnContainer" class="flex justify-center mb-xl"></div>
+                    </form>
                 </div>
-            </main>
-
-            <div class="bg-glow"></div>
+            </div>
         </div>
     `;
 

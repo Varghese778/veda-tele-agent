@@ -65,6 +65,7 @@ async function request(endpoint, options = {}) {
 export const api = {
     get: (url) => request(url, { method: 'GET' }),
     post: (url, data) => request(url, { method: 'POST', body: JSON.stringify(data) }),
+    put: (url, data) => request(url, { method: 'PUT', body: JSON.stringify(data) }),
     upload: (url, formData) => request(url, { method: 'POST', body: formData }),
     patch: (url, data) => request(url, { method: 'PATCH', body: JSON.stringify(data) }),
     delete: (url) => request(url, { method: 'DELETE' })
