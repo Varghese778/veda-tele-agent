@@ -235,15 +235,25 @@ const connectWebSocket = (leadId, token) => {
 
   ws.onclose = (event) => {
     console.log(`[Widget] WebSocket closed: code=${event.code}`);
-    if (event.code !== 1000 && event.code !== 4001) {
+    stopMicCapture();
+    if (event.code === 1000 || event.code === 4001) {
       // Normal session end — show completed state.
       endConversation();
+    } else {
+      // Abnormal close — show error
+      console.error(`[Widget] Abnormal WS close: code=${event.code}`);
+      document.getElementById('errorMessage').textContent = 
+        'Connection lost. The session may have ended unexpectedly. Please try again.';
+      showState('error-state');
+      if (activeOrb) { activeOrb.destroy(); activeOrb = null; }
     }
   };
 
   ws.onerror = (err) => {
     console.error('[Widget] WebSocket error:', err);
-    document.getElementById('statusText').textContent = 'Connection error...';
+    document.getElementById('errorMessage').textContent = 'Connection error. Please check your internet and try again.';
+    showState('error-state');
+    stopMicCapture();
   };
 };
 

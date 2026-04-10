@@ -5,6 +5,7 @@
  * Design: Slate-900/Emerald-500, minimal borders, generous whitespace.
  * Agent logo appears ONLY when a campaign is active.
  * Live Monitor shows real-time Firestore events from campaign_activity.
+ * Call History shows WhatsApp-style chat bubbles with real-time transcript streaming.
  */
 
 import { api } from "../api.js";
@@ -48,6 +49,7 @@ const injectStyles = () => {
     .vd-brand i { color:var(--em); }
     .vd-nav-r { display:flex; align-items:center; gap:14px; }
     .vd-avatar { width:30px; height:30px; border-radius:50%; background:var(--em); display:flex; align-items:center; justify-content:center; color:#000; font-weight:700; font-size:0.7rem; }
+    .vd-avatar img { width:100%; height:100%; border-radius:50%; object-fit:cover; }
     .vd-nav-btn { background:none; border:1px solid var(--bdr); color:var(--tx2); padding:6px 12px; border-radius:8px; font-size:0.78rem; cursor:pointer; transition:0.15s; }
     .vd-nav-btn:hover { background:rgba(255,255,255,0.04); color:var(--tx); }
 
@@ -145,19 +147,25 @@ const injectStyles = () => {
     /* Empty state */
     .vd-empty { text-align:center; padding:50px 20px; color:var(--tx2); font-size:0.88rem; }
     .vd-empty i { font-size:2rem; margin-bottom:10px; display:block; opacity:0.3; }
-
     .hidden { display:none !important; }
 
-    /* Call History */
+    /* ━━━ Call History — WhatsApp-style chat bubbles ━━━ */
     .vd-history { background:var(--s1); border:1px solid var(--bdr); border-radius:12px; padding:16px; margin-top:14px; }
     .vd-history-title { font-family:'Outfit',sans-serif; font-size:0.95rem; font-weight:600; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
-    .vd-transcript { background:var(--s2); border:1px solid var(--bdr); border-radius:10px; padding:14px; margin-bottom:10px; }
-    .vd-transcript-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
-    .vd-transcript-name { font-weight:600; font-size:0.85rem; }
-    .vd-transcript-time { font-size:0.7rem; color:var(--tx2); }
-    .vd-transcript-body { font-size:0.78rem; color:var(--tx2); line-height:1.6; white-space:pre-wrap; max-height:200px; overflow-y:auto; }
-    .vd-transcript-intent { display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.62rem; font-weight:600; text-transform:uppercase; }
+    .vd-chat-card { background:var(--s2); border:1px solid var(--bdr); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+    .vd-chat-header { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; border-bottom:1px solid var(--bdr); }
+    .vd-chat-name { font-weight:600; font-size:0.82rem; }
+    .vd-chat-meta { display:flex; align-items:center; gap:8px; }
+    .vd-chat-time { font-size:0.65rem; color:var(--tx2); }
+    .vd-chat-intent { display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.58rem; font-weight:700; text-transform:uppercase; letter-spacing:0.3px; }
+    .vd-chat-body { padding:10px 14px; max-height:250px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; background: #0a0e18; }
+    .vd-bubble { max-width:85%; padding:7px 12px; border-radius:12px; font-size:0.72rem; line-height:1.5; word-wrap:break-word; position:relative; }
+    .vd-bubble.agent { align-self:flex-start; background:#1a3a2a; color:#d1fae5; border-bottom-left-radius:4px; }
+    .vd-bubble.user { align-self:flex-end; background:#1e3a5f; color:#dbeafe; border-bottom-right-radius:4px; }
+    .vd-bubble-label { font-size:0.58rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:2px; opacity:0.6; }
     .vd-no-history { text-align:center; padding:20px; color:var(--tx2); font-size:0.82rem; font-style:italic; }
+    .vd-live-badge { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:12px; font-size:0.58rem; font-weight:700; background:rgba(34,197,94,0.15); color:#22c55e; }
+    .vd-live-dot { width:5px; height:5px; border-radius:50%; background:#22c55e; animation:vdpulse 1.5s infinite; }
 
     /* Responsive */
     @media(max-width:768px) {
@@ -185,7 +193,14 @@ export const renderDashboard = async (container) => {
     campaigns = Array.isArray(cp?.campaigns || cp) ? (cp?.campaigns || cp) : [];
   } catch (e) { console.error("[Dash]", e.message); }
 
-  const initials = (state.user?.email || "U")[0].toUpperCase();
+  // Build avatar HTML — use Google photo if available
+  const user = state.user || {};
+  const photoURL = user.photo_url || user.photoURL || '';
+  const initials = (user.display_name || user.email || "U")[0].toUpperCase();
+  const avatarHTML = photoURL
+    ? `<div class="vd-avatar"><img src="${photoURL}" referrerpolicy="no-referrer"></div>`
+    : `<div class="vd-avatar">${initials}</div>`;
+
   const hasActive = campaigns.some(c => c.status === "active");
 
   /* ─── Campaign List HTML ─── */
@@ -238,11 +253,11 @@ export const renderDashboard = async (container) => {
       </div>
 
       <div class="vd-charts">
+        <div class="vd-chart-card"><div class="vd-chart-title">Lead Funnel</div><canvas id="funnelC" height="180"></canvas></div>
         <div class="vd-monitor">
           <div class="vd-mon-title"><span class="vd-pulse"></span> Live Monitor</div>
           <div class="vd-log-scroll" id="logScroll"><div class="vd-log-empty">Waiting for agent activity…</div></div>
         </div>
-        <div class="vd-chart-card"><div class="vd-chart-title">Lead Funnel</div><canvas id="funnelC" height="180"></canvas></div>
       </div>
 
       <div class="vd-bottom">
@@ -274,7 +289,7 @@ export const renderDashboard = async (container) => {
       </div>
 
       <div class="vd-history">
-        <div class="vd-history-title"><i class="fas fa-scroll" style="color:var(--em);font-size:0.8rem;"></i> Call History</div>
+        <div class="vd-history-title"><i class="fas fa-comments" style="color:var(--em);font-size:0.8rem;"></i> Call History</div>
         <div id="historyList"><div class="vd-no-history">No completed conversations yet.</div></div>
       </div>
     `;
@@ -307,7 +322,7 @@ export const renderDashboard = async (container) => {
         <div class="vd-brand"><i class="fas fa-bolt"></i> VEDA</div>
         <div class="vd-nav-r">
           <span style="color:var(--tx2);font-size:0.78rem;">${state.user?.email||''}</span>
-          <div class="vd-avatar">${initials}</div>
+          ${avatarHTML}
           <button class="vd-nav-btn" id="settingsBtn"><i class="fas fa-cog"></i></button>
           <button class="vd-nav-btn" id="logoutBtn">Sign Out</button>
         </div>
@@ -361,7 +376,40 @@ export const renderDashboard = async (container) => {
     if (iC) { iC.data.datasets[0].data = [ib.INTERESTED||0,ib.NOT_INTERESTED||0,ib.CALLBACK||0]; iC.update('none'); }
   };
 
-  /* ━━━ Update lead table ━━━ */
+  /* ━━━ Parse transcript into chat bubbles ━━━ */
+  const parseToBubbles = (lead) => {
+    // Use live_transcript (structured array) if available, otherwise parse raw transcript
+    const live = lead.live_transcript;
+    if (Array.isArray(live) && live.length > 0) {
+      return live.map(m => `
+        <div class="vd-bubble ${m.role === 'agent' ? 'agent' : 'user'}">
+          <div class="vd-bubble-label">${m.role === 'agent' ? '🤖 Veda' : '👤 Customer'}</div>
+          ${(m.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}
+        </div>
+      `).join('');
+    }
+
+    // Fallback: parse raw transcript string into pseudo-bubbles
+    const raw = lead.transcript || '';
+    if (!raw) return '<div class="vd-no-history">No transcript data.</div>';
+
+    // Split by lines, skip header
+    const lines = raw.split('\n').filter(l => l.trim() && !l.startsWith('Transcript') && !l.startsWith('═'));
+    if (lines.length === 0) return '<div class="vd-no-history">Empty transcript.</div>';
+
+    // Alternate bubbles (heuristic: odd = agent, even = user)
+    return lines.map((line, i) => {
+      const isAgent = i % 2 === 0;
+      return `
+        <div class="vd-bubble ${isAgent ? 'agent' : 'user'}">
+          <div class="vd-bubble-label">${isAgent ? '🤖 Veda' : '👤 Customer'}</div>
+          ${line.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
+        </div>
+      `;
+    }).join('');
+  };
+
+  /* ━━━ Update lead table + Call History ━━━ */
   const updateLeads = (leads) => {
     const tb = document.getElementById('leadTb');
     if (!tb) return;
@@ -379,31 +427,56 @@ export const renderDashboard = async (container) => {
       </tr>
     `).join('');
 
-    // Update call history
+    // Update call history with chat bubbles
     const hist = document.getElementById('historyList');
     if (!hist) return;
-    const withTranscripts = leads.filter(l => l.transcript);
-    if (withTranscripts.length === 0) {
-      hist.innerHTML = '<div class="vd-no-history">No completed conversations yet.</div>';
+    const withData = leads.filter(l => l.transcript || (Array.isArray(l.live_transcript) && l.live_transcript.length > 0));
+    const activeCalls = leads.filter(l => l.call_status === 'calling' || l.call_status === 'widget_started');
+
+    if (withData.length === 0 && activeCalls.length === 0) {
+      hist.innerHTML = '<div class="vd-no-history">No conversations yet.</div>';
       return;
     }
-    hist.innerHTML = withTranscripts.map(l => {
+
+    let html = '';
+
+    // Show active/live calls first
+    activeCalls.forEach(l => {
+      if (!l.live_transcript || l.live_transcript.length === 0) return;
+      html += `
+        <div class="vd-chat-card">
+          <div class="vd-chat-header">
+            <div class="vd-chat-name">${l.customer_name || 'Lead'}</div>
+            <div class="vd-chat-meta">
+              <span class="vd-live-badge"><span class="vd-live-dot"></span> LIVE</span>
+            </div>
+          </div>
+          <div class="vd-chat-body">${parseToBubbles(l)}</div>
+        </div>
+      `;
+    });
+
+    // Show completed calls
+    withData.forEach(l => {
+      if (activeCalls.find(a => a.id === l.id || a.lead_id === l.lead_id)) return; // skip if already shown as live
       const intent = l.extracted_data?.intent || 'N/A';
       const ic = sc(intent === 'INTERESTED' ? 'qualified' : (intent === 'NOT_INTERESTED' ? 'failed' : 'calling'));
       const time = l.completed_at ? new Date(l.completed_at._seconds ? l.completed_at._seconds * 1000 : l.completed_at).toLocaleString() : '';
-      return `
-        <div class="vd-transcript">
-          <div class="vd-transcript-head">
-            <div>
-              <span class="vd-transcript-name">${l.customer_name || 'Lead'}</span>
-              <span class="vd-transcript-intent" style="background:${ic}22;color:${ic};margin-left:8px;">${intent}</span>
+      html += `
+        <div class="vd-chat-card">
+          <div class="vd-chat-header">
+            <div class="vd-chat-name">${l.customer_name || 'Lead'}</div>
+            <div class="vd-chat-meta">
+              <span class="vd-chat-intent" style="background:${ic}22;color:${ic};">${intent}</span>
+              <span class="vd-chat-time">${time}</span>
             </div>
-            <span class="vd-transcript-time">${time}</span>
           </div>
-          <div class="vd-transcript-body">${(l.transcript || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+          <div class="vd-chat-body">${parseToBubbles(l)}</div>
         </div>
       `;
-    }).join('');
+    });
+
+    hist.innerHTML = html || '<div class="vd-no-history">No conversations yet.</div>';
   };
 
   /* ━━━ Update live monitor ━━━ */
@@ -423,6 +496,8 @@ export const renderDashboard = async (container) => {
         const ts = l.timestamp ? new Date(l.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
         return `<div class="vd-log-entry"><span class="vd-log-time">${ts}</span>${l.message}</div>`;
       }).join('');
+      // Auto-scroll to bottom
+      scroll.scrollTop = scroll.scrollHeight;
     } catch (e) { /* silent */ }
   };
 
@@ -449,9 +524,9 @@ export const renderDashboard = async (container) => {
       refreshData();
       updateActivityLog();
       if (pollTimer) clearInterval(pollTimer);
-      pollTimer = setInterval(refreshData, 5000);
+      pollTimer = setInterval(refreshData, 3000); // 3s for faster transcript updates
       if (activityTimer) clearInterval(activityTimer);
-      activityTimer = setInterval(updateActivityLog, 4000);
+      activityTimer = setInterval(updateActivityLog, 2000); // 2s for real-time monitor
     } else {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
       if (activityTimer) { clearInterval(activityTimer); activityTimer = null; }

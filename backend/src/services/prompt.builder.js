@@ -19,7 +19,7 @@ const { db } = require('../config/firebase');
 // Constants & Caching
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-const PROMPT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const PROMPT_CACHE_TTL_MS = 60 * 1000; // 1 minute — faster settings refresh
 
 /** 
  * Simple in-memory cache: leadId -> { systemPrompt, expiresAt }
@@ -134,7 +134,7 @@ const buildPrompt = async (leadId) => {
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[PromptBuilder] Cache hit for lead=${leadId}`);
     }
-    return { systemPrompt: cached.systemPrompt };
+    return cached.result;
   }
 
   try {
@@ -186,9 +186,17 @@ const buildPrompt = async (leadId) => {
       systemPrompt = replacePlaceholders(SYSTEM_PROMPT_TEMPLATE, data);
     }
 
+    // 5b. Inject user skills if present
+    const skills = userSettings?.skills;
+    if (Array.isArray(skills) && skills.length > 0) {
+      const skillsBlock = skills.map(s => `### ${s.name}\n${s.content}`).join('\n\n');
+      systemPrompt += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nADDITIONAL SKILLS & EXPERTISE\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nApply the following specialized skills during this conversation:\n\n${skillsBlock}`;
+    }
+
     // 6. Update Cache
+    const result = { systemPrompt, voice: userSettings?.voice || 'Kore', campaignId, customerName: data.customer_name, businessId };
     cache.set(leadId, {
-      systemPrompt,
+      result,
       expiresAt: Date.now() + PROMPT_CACHE_TTL_MS,
     });
 
@@ -196,7 +204,7 @@ const buildPrompt = async (leadId) => {
       console.log(`[PromptBuilder] Assembled prompt for lead=${leadId} (len: ${systemPrompt.length})`);
     }
 
-    return { systemPrompt, voice: userSettings?.voice || 'Kore', campaignId, customerName: data.customer_name, businessId };
+    return result;
   } catch (err) {
     console.error(`[PromptBuilder] Failed to build prompt for lead=${leadId}:`, err.message);
     // If it's a transient Firestore error, try to return the generic fallback instead of crashing

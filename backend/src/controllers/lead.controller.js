@@ -297,8 +297,10 @@ const listLeads = async (req, res) => {
         call_status: d.call_status || 'pending',
         extracted_data: d.extracted_data || {},
         transcript: d.transcript || '',
+        live_transcript: d.live_transcript || [],
         call_duration_sec: d.call_duration_sec || 0,
         called_at: d.called_at || null,
+        completed_at: d.completed_at || null,
       };
     });
 

@@ -108,6 +108,9 @@ const handleConnection = async (clientWs, request) => {
 
   let campaignIdForLog = null;
 
+  // Track transcript messages as structured chat entries for real-time display
+  const chatMessages = [];
+
   const session = {
     leadId,
     type: isBrowser ? 'browser' : 'twilio',
@@ -251,7 +254,10 @@ const connectToGemini = async (session, clientWs, systemPrompt, userVoice = 'Kor
                   voice_name: userVoice,
                 }
               }
-            }
+            },
+            // Enable text transcription of both input (user speech) and output (AI speech)
+            input_audio_transcription: { enabled: true },
+            output_audio_transcription: { enabled: true },
           },
           system_instruction: {
             parts: [{ text: systemPrompt }]
@@ -291,12 +297,54 @@ const connectToGemini = async (session, clientWs, systemPrompt, userVoice = 'Kor
               }
             }
             if (part.text) {
-              session.transcriptChunks.push(part.text);
+              session.transcriptChunks.push(`[Agent] ${part.text}`);
+              // Build structured chat message
+              const chatMsg = { role: 'agent', text: part.text, ts: Date.now() };
+              chatMessages.push(chatMsg);
               // Send transcript to browser widget in real-time
               if (session.type === 'browser' && clientWs.readyState === WebSocket.OPEN) {
-                clientWs.send(JSON.stringify({ type: 'transcript', text: part.text }));
+                clientWs.send(JSON.stringify({ type: 'transcript', text: part.text, role: 'agent' }));
               }
+              // Stream to Firestore incrementally (fire and forget)
+              db.collection('leads').doc(session.leadId).set(
+                { live_transcript: chatMessages, transcript_updated_at: new Date().toISOString() },
+                { merge: true }
+              ).catch(() => {});
             }
+          }
+        }
+
+        // ── Handle Output Audio Transcription (AI speech → text) ──
+        if (response.serverContent?.outputTranscription?.text) {
+          const text = response.serverContent.outputTranscription.text;
+          if (text.trim()) {
+            session.transcriptChunks.push(`[Agent] ${text}`);
+            const chatMsg = { role: 'agent', text: text.trim(), ts: Date.now() };
+            chatMessages.push(chatMsg);
+            if (session.type === 'browser' && clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(JSON.stringify({ type: 'transcript', text: text.trim(), role: 'agent' }));
+            }
+            db.collection('leads').doc(session.leadId).set(
+              { live_transcript: chatMessages, transcript_updated_at: new Date().toISOString() },
+              { merge: true }
+            ).catch(() => {});
+          }
+        }
+
+        // ── Handle Input Audio Transcription (User speech → text) ──
+        if (response.serverContent?.inputTranscription?.text) {
+          const text = response.serverContent.inputTranscription.text;
+          if (text.trim()) {
+            session.transcriptChunks.push(`[Customer] ${text}`);
+            const chatMsg = { role: 'user', text: text.trim(), ts: Date.now() };
+            chatMessages.push(chatMsg);
+            if (session.type === 'browser' && clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(JSON.stringify({ type: 'transcript', text: text.trim(), role: 'user' }));
+            }
+            db.collection('leads').doc(session.leadId).set(
+              { live_transcript: chatMessages, transcript_updated_at: new Date().toISOString() },
+              { merge: true }
+            ).catch(() => {});
           }
         }
 
@@ -311,7 +359,8 @@ const connectToGemini = async (session, clientWs, systemPrompt, userVoice = 'Kor
 
               const intent = call.args?.intent || 'UNKNOWN';
               if (campaignIdForLog) {
-                logActivity(campaignIdForLog, `🧠 AI: ${intent} — ${(call.args?.summary || '').substring(0, 80)}`, 'ai');
+                logActivity(campaignIdForLog, `🧠 AI classified: ${intent} — ${(call.args?.summary || '').substring(0, 80)}`, 'ai');
+                logActivity(campaignIdForLog, `✅ Call completed — ${session.transcriptChunks.length} messages exchanged`, 'system');
               }
 
               geminiWs.send(JSON.stringify({
@@ -333,23 +382,32 @@ const connectToGemini = async (session, clientWs, systemPrompt, userVoice = 'Kor
 
     geminiWs.on('error', (err) => {
       console.error(`[Bridge] Gemini error for lead=${session.leadId}:`, err.message);
+      if (clientWs.readyState === WebSocket.OPEN) {
+        clientWs.send(JSON.stringify({ type: 'error', message: 'AI service temporarily unavailable. Please try again.' }));
+      }
     });
 
     geminiWs.on('close', async (code, reason) => {
-      console.log(`[Bridge] Gemini closed for lead=${session.leadId} (code=${code})`);
+      console.log(`[Bridge] Gemini closed for lead=${session.leadId} (code=${code}, reason=${reason})`);
       if (!session.isClosing && session.reconnectAttempts < 1) {
         session.reconnectAttempts++;
         console.log(`[Bridge] Reconnecting Gemini for lead=${session.leadId}...`);
         await connectToGemini(session, clientWs, systemPrompt, userVoice, campaignIdForLog);
       } else if (!session.isClosing) {
         console.warn(`[Bridge] Gemini failed permanently for lead=${session.leadId}. Closing client.`);
-        clientWs.close();
+        if (clientWs.readyState === WebSocket.OPEN) {
+          clientWs.send(JSON.stringify({ type: 'error', message: 'Voice AI session ended unexpectedly. Please try again.' }));
+        }
+        clientWs.close(1000);
       }
     });
 
   } catch (err) {
     console.error(`[Bridge] Failed to connect to Gemini for lead=${session.leadId}:`, err.message);
-    if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.send(JSON.stringify({ type: 'error', message: 'Failed to initialize AI session. Please try again.' }));
+      clientWs.close(1000);
+    }
   }
 };
 

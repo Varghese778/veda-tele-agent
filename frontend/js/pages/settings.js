@@ -1,6 +1,6 @@
 /**
  * @file frontend/js/pages/settings.js
- * @description User Settings Page — system prompt, voice, theme, profile.
+ * @description User Settings Page — system prompt, voice, skills, profile.
  * All settings persist to Firestore user_settings collection.
  */
 
@@ -20,7 +20,6 @@ export const renderSettings = async (container) => {
         availableVoices = res?.available_voices || ['Aoede', 'Charon', 'Fenrir', 'Kore', 'Puck'];
     } catch (err) {
         console.error("[Settings] Failed to load settings:", err.message);
-        // Use fallback defaults
         availableVoices = ['Aoede', 'Charon', 'Fenrir', 'Kore', 'Puck'];
     }
 
@@ -36,6 +35,38 @@ export const renderSettings = async (container) => {
     const email = user.email || '';
     const photoURL = user.photo_url || user.photoURL || '';
     const initials = displayName ? displayName[0].toUpperCase() : email ? email[0].toUpperCase() : 'U';
+
+    // Skills state
+    let skills = Array.isArray(settings.skills) ? [...settings.skills] : [];
+
+    const renderSkillList = () => {
+        const el = document.getElementById('skillList');
+        if (!el) return;
+        if (skills.length === 0) {
+            el.innerHTML = '<div style="color:var(--tx2);font-size:0.78rem;font-style:italic;padding:12px 0;text-align:center;">No skills added yet. Upload .md files to enhance your AI agent.</div>';
+            return;
+        }
+        el.innerHTML = skills.map((s, i) => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--s2);border-radius:8px;margin-bottom:6px;border:1px solid var(--bdr);">
+                <div>
+                    <div style="font-weight:600;font-size:0.82rem;">📄 ${s.name}</div>
+                    <div style="color:var(--tx2);font-size:0.68rem;margin-top:2px;">${s.content.length} chars</div>
+                </div>
+                <button class="skill-del" data-idx="${i}" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.82rem;padding:4px 8px;border-radius:6px;transition:0.15s;">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        `).join('');
+
+        // Attach delete handlers
+        document.querySelectorAll('.skill-del').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.idx);
+                skills.splice(idx, 1);
+                renderSkillList();
+            });
+        });
+    };
 
     container.innerHTML = `
         <div class="vd" style="min-height:100vh;">
@@ -70,7 +101,22 @@ export const renderSettings = async (container) => {
                     <p style="color:var(--tx2); font-size:0.78rem; margin-bottom:10px;">
                         This is the base behavior prompt for your AI agent. Campaign-specific details are injected automatically.
                     </p>
-                    <textarea id="promptInput" rows="10" style="width:100%; padding:12px; border-radius:10px; background:var(--s2); border:1px solid var(--bdr); color:var(--tx); font-size:0.82rem; font-family:'Inter',monospace; resize:vertical; line-height:1.5;">${(settings.system_prompt || '').replace(/</g, '&lt;')}</textarea>
+                    <textarea id="promptInput" rows="12" style="width:100%; padding:12px; border-radius:10px; background:var(--s2); border:1px solid var(--bdr); color:var(--tx); font-size:0.78rem; font-family:'Inter',monospace; resize:vertical; line-height:1.6;">${(settings.system_prompt || '').replace(/</g, '&lt;')}</textarea>
+                </div>
+
+                <!-- Skills Section -->
+                <div style="background:var(--s1); border:1px solid var(--bdr); border-radius:14px; padding:20px; margin-bottom:18px;">
+                    <div style="font-family:'Outfit',sans-serif; font-weight:600; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
+                        <i class="fas fa-graduation-cap" style="color:var(--em);font-size:0.85rem;"></i> Agent Skills
+                    </div>
+                    <p style="color:var(--tx2); font-size:0.78rem; margin-bottom:12px;">
+                        Upload <code>.md</code> files to teach your AI agent specialized skills. Examples: marketing strategies, negotiation tactics, product knowledge, communication frameworks.
+                    </p>
+                    <div id="skillList"></div>
+                    <label style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;background:var(--s2);border:1px dashed var(--bdr);color:var(--tx2);cursor:pointer;transition:0.15s;margin-top:8px;font-size:0.82rem;justify-content:center;">
+                        <i class="fas fa-upload" style="font-size:0.75rem;"></i> Upload .md Skill File
+                        <input type="file" id="skillFileInput" accept=".md,.txt,.markdown" style="display:none;" multiple>
+                    </label>
                 </div>
 
                 <!-- Voice Selection -->
@@ -111,6 +157,9 @@ export const renderSettings = async (container) => {
         </div>
     `;
 
+    // Render skill list
+    renderSkillList();
+
     // State
     let selectedVoice = settings.voice || 'Kore';
 
@@ -130,6 +179,35 @@ export const renderSettings = async (container) => {
         });
     });
 
+    // Skill file upload
+    document.getElementById('skillFileInput').addEventListener('change', async (e) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        for (const file of files) {
+            try {
+                const content = await file.text();
+                const name = file.name.replace(/\.(md|txt|markdown)$/i, '');
+                // Check if skill with same name already exists
+                const existingIdx = skills.findIndex(s => s.name === name);
+                if (existingIdx >= 0) {
+                    skills[existingIdx].content = content;
+                } else {
+                    if (skills.length >= 10) {
+                        alert('Maximum 10 skills allowed. Remove one before adding more.');
+                        break;
+                    }
+                    skills.push({ name, content });
+                }
+            } catch (err) {
+                console.error('[Settings] Failed to read file:', err.message);
+            }
+        }
+
+        renderSkillList();
+        e.target.value = '';
+    });
+
     // Save
     document.getElementById('saveBtn').addEventListener('click', async () => {
         const btn = document.getElementById('saveBtn');
@@ -142,6 +220,7 @@ export const renderSettings = async (container) => {
             const payload = {
                 system_prompt: document.getElementById('promptInput').value,
                 voice: selectedVoice,
+                skills: skills,
             };
             
             await api.put('/api/settings', payload);
