@@ -104,7 +104,7 @@ const fields = {
 const createCampaignSchema = Joi.object({
   campaign_name: fields.campaign_name.required(),
   purpose: fields.purpose.required(),
-  script_guidelines: fields.script_guidelines.required(),
+  script_guidelines: fields.script_guidelines.optional(),
   product_description: fields.product_description.required(),
   target_audience: fields.target_audience.required(),
   key_details: fields.key_details.required(),

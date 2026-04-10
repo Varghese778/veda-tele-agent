@@ -32,6 +32,8 @@ const {
   startCampaign,
   pauseCampaign,
   getAnalytics,
+  deleteCampaign,
+  clearLeads,
 } = require('../controllers/campaign.controller');
 
 const router = Router();
@@ -70,5 +72,11 @@ router.post('/:id/pause', pauseCampaign);
 
 // Aggregate lead metrics for a campaign.
 router.get('/:id/analytics', getAnalytics);
+
+// Delete a campaign and all its leads.
+router.delete('/:id', deleteCampaign);
+
+// Clear all leads for a campaign.
+router.delete('/:id/leads', clearLeads);
 
 module.exports = router;

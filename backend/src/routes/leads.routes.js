@@ -99,7 +99,7 @@ const handleMulterError = (err, req, res, next) => {
 router.post(
   '/:id/upload',
   verifyToken,
-  upload.single('contacts'),
+  upload.single('file'),
   handleMulterError,
   uploadLeads
 );

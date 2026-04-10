@@ -93,6 +93,9 @@ const listCampaigns = async (req, res) => {
         campaign_id: doc.id,
         campaign_name: d.campaign_name,
         purpose: d.purpose,
+        product_description: d.product_description || '',
+        target_audience: d.target_audience || '',
+        key_details: d.key_details || '',
         status: d.status,
         total_leads: d.total_leads || 0,
         called_count: d.called_count || 0,
@@ -454,20 +457,29 @@ const getAnalytics = async (req, res) => {
 
     const callStatusBreakdown = {
       pending: 0,
+      email_sent: 0,
+      widget_started: 0,
+      qualified: 0,
+      call_booked: 0,
       calling: 0,
       completed: 0,
       failed: 0,
+      not_interested: 0,
+      callback: 0,
       retry_queued: 0,
+      email_bounced: 0,
     };
 
     leadsSnap.forEach((doc) => {
       const lead = doc.data();
       totalLeads++;
 
-      // Call status counts.
+      // Call status counts — track every possible status.
       const status = lead.call_status || 'pending';
       if (status in callStatusBreakdown) {
         callStatusBreakdown[status]++;
+      } else {
+        callStatusBreakdown.pending++; // Unknown statuses default to pending.
       }
 
       // Intent counts (only meaningful for completed calls with extracted data).
@@ -517,6 +529,107 @@ const getAnalytics = async (req, res) => {
   }
 };
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DELETE /api/campaigns/:id
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * deleteCampaign — Deletes a campaign and all its associated leads.
+ */
+const deleteCampaign = async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const result = await fetchOwnedCampaign(req.params.id, uid, res);
+    if (!result) return;
+
+    const { ref } = result;
+
+    // Delete all leads for this campaign.
+    const leadsSnap = await db
+      .collection('leads')
+      .where('campaign_id', '==', req.params.id)
+      .where('business_id', '==', uid)
+      .get();
+
+    // Batch delete in chunks.
+    const batchSize = 400;
+    const docs = leadsSnap.docs;
+    for (let i = 0; i < docs.length; i += batchSize) {
+      const batch = db.batch();
+      const chunk = docs.slice(i, i + batchSize);
+      chunk.forEach((doc) => batch.delete(doc.ref));
+      await batch.commit();
+    }
+
+    // Delete the campaign document.
+    await ref.delete();
+
+    return res.status(200).json({
+      message: 'Campaign and all leads deleted.',
+      campaign_id: req.params.id,
+      leads_deleted: docs.length,
+    });
+  } catch (err) {
+    console.error('[CampaignController] deleteCampaign error:', err.message);
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to delete campaign.',
+    });
+  }
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DELETE /api/campaigns/:id/leads
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * clearLeads — Deletes all leads for a campaign and resets the total_leads counter.
+ */
+const clearLeads = async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const result = await fetchOwnedCampaign(req.params.id, uid, res);
+    if (!result) return;
+
+    const { ref } = result;
+
+    // Delete all leads.
+    const leadsSnap = await db
+      .collection('leads')
+      .where('campaign_id', '==', req.params.id)
+      .where('business_id', '==', uid)
+      .get();
+
+    const batchSize = 400;
+    const docs = leadsSnap.docs;
+    for (let i = 0; i < docs.length; i += batchSize) {
+      const batch = db.batch();
+      const chunk = docs.slice(i, i + batchSize);
+      chunk.forEach((doc) => batch.delete(doc.ref));
+      await batch.commit();
+    }
+
+    // Reset campaign counters.
+    await ref.update({
+      total_leads: 0,
+      called_count: 0,
+      updated_at: FieldValue.serverTimestamp(),
+    });
+
+    return res.status(200).json({
+      message: 'All leads cleared.',
+      campaign_id: req.params.id,
+      leads_deleted: docs.length,
+    });
+  } catch (err) {
+    console.error('[CampaignController] clearLeads error:', err.message);
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to clear leads.',
+    });
+  }
+};
+
 module.exports = {
   listCampaigns,
   getCampaign,
@@ -525,4 +638,7 @@ module.exports = {
   startCampaign,
   pauseCampaign,
   getAnalytics,
+  deleteCampaign,
+  clearLeads,
 };
+
